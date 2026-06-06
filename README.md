@@ -20,3 +20,13 @@ Instead of iterative denoising or direct regression, it learns a **drifting fiel
 
 ### Summary
 DriftSE replaces iterative denoising with a learned continuous transformation of distributions, achieving fast and effective speech enhancement in a single step.
+
+### Citation
+
+If you use this work, please cite:
+@inproceedings{xu2026driftse,
+  author    = {Liang Xu and Diego Caviedes-Nozal and W. Bastiaan Kleijn and Longfei Felix Yan and Rasmus Kongsgaard Olsson},
+  title     = {Speech Enhancement Based on Drifting Models},
+  booktitle = {Proc. Interspeech 2026},
+  year      = {2026}
+}
