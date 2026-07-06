@@ -1,7 +1,7 @@
 ## Speech Enhancement Based on Drifting Models (DriftSE) (code coming soon)
 
 🔗 [Project page](https://liangxu123.github.io/driftse/)  
-🔗 [Paper DriftSE]([Paper](https://arxiv.org/abs/2604.24199))
+🔗 [Paper DriftSE](https://arxiv.org/abs/2604.24199))
 
 ---
 
