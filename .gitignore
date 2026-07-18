@@ -1,0 +1,5 @@
+*.log
+*.out
+*.pt
+./*data*
+./*latent_ckpt*
