@@ -214,4 +214,4 @@ If this codebase or methodology proves useful in your research, please cite:
 
 ## 🙏 Acknowledgments
 
-We express our gratitude to the authors of the [SGMSE+](https://github.com/sp-uhh/sgmse) repository, upon whose foundational work this codebase is built. We also thank the authors of [Drifting Models](https://arxiv.org/abs/2506.24199) for the generative framework that inspired this work.
+We express our gratitude to the authors of the [SGMSE+](https://github.com/sp-uhh/sgmse) repository, upon whose foundational work this codebase is built. We also thank the authors of [Drifting Models](https://github.com/tyfeld/drifting-model) for the generative framework that inspired this work.
