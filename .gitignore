@@ -1,5 +1,21 @@
-*.log
-*.out
-*.pt
-./*data*
-./*latent_ckpt*
+# ── Python ──────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Large binary / generated outputs ────────────────
+*.pt          # PyTorch checkpoints
+*.ckpt        # checkpoint files
+*.log         # log files
+
+# ── Generated directories (not committed) ───────────
+logs/         # model checkpoints (download separately)
+out/          # enhanced audio outputs (download separately)
+data/         # dataset (user-provided)
+latent_ckpt/  # SSL encoder checkpoints (download separately)
+
+# ── Misc ────────────────────────────────────────────
+.DS_Store
+wandb/
