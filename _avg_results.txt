@@ -1,0 +1,6 @@
+PESQ: nan ± nan
+STOI: nan ± nan
+ESTOI: nan ± nan
+SI-SDR: nan ± nan
+NR_Scoreq: nan ± nan
+REF_Scoreq: nan ± nan

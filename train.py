@@ -373,6 +373,7 @@ def train_step(
     # Apply drift to the CURRENT normalized features for Loss
     target = (target_gen + V_total).detach()
     
+    drift_weight = config.get("drift_weight", 1.0)
     drift_loss = FF.mse_loss(target_gen, target) * drift_weight if drift_weight > 0 else 0.0
     loss = drift_loss
     # 2. Temporal Smoothing (The fix for Frame-wise)
