@@ -369,58 +369,6 @@ def train_step(
     # 3b. Compute Drift Term
     V_total, target_gen, target_pos = compute_drift_term(feat_gen_norm, feat_pos_norm, x_gen_real.shape, config)
 
-    # NaN Checks
-    if torch.isnan(x_gen_real).any():
-        print("[ERROR] x_gen_real contains NaNs!")
-    if torch.isnan(feat_gen_norm).any():
-        print(f"[ERROR] feat_gen_norm contains NaNs! global_scale={global_scale}")
-    if torch.isnan(V_total).any():
-        print("[ERROR] V_total contains NaNs!")
-
-    # DEBUG: Check Feature Distance Scale
-    IS_DEBUG = True
-    drift_weight = config.get("drift_weight", 1.0)
-    if IS_DEBUG==True and batch_idx % 500 == 0 and drift_weight > 0:
-        with torch.no_grad():
-            # Use small subset to save compute
-            subset_gen = target_gen[:100] 
-            # Note: target_gen and target_pos are from compute_drift_term now, matching shapes
-            subset_pos = target_pos[:100] 
-
-            dists = torch.cdist(subset_gen, subset_pos, p=2)
-            mean_dist = dists.mean().item()
-            min_dist = dists.min().item()
-            
-            # Simple check on norms
-            # Detailed Temperature Analysis
-            # print(f"\n[DEBUG FFT] Params | Norm Mean: {feat_gen_norm.abs().mean().item():.4f} | drift_weight: {drift_weight}")
-            
-            dists_flat = dists.flatten()
-            # print(f"[DEBUG FFT] Dists | Min: {dists_flat.min():.4f} | Median: {dists_flat.median():.4f} | Mean: {dists_flat.mean():.4f} | Max: {dists_flat.max():.4f}")
-
-            temps = config['temperatures']
-            # print(f"[DEBUG FFT] Analysis per Temp:")
-            for t in temps:
-                # Softmax analysis on the subset
-                # logits: (N, M)
-                logits = -dists / (t + 1e-8)
-                probs = torch.softmax(logits, dim=1) # Prob of pos given gen
-                
-                # Metrics
-                max_p = probs.max(dim=1)[0].mean().item() # Avg max prob
-                perplexity = torch.exp(-torch.sum(probs * torch.log(probs + 1e-10), dim=1)).mean().item()
-                
-                status = "Good"
-                if max_p > 0.9: status = "Too Cold (Collapse to NN)"
-                elif max_p < (1.5 / subset_pos.shape[0]): status = "Too Hot (Uniform)"
-                
-                # print(f"  T={t:<5}: MaxP={max_p:.4f}, Perplex={perplexity:.1f}/{subset_pos.shape[0]} -> {status}")
-
-            # Recommendation based on median distance heuristic
-            # Often T ~ P20 or T ~ Median/5 is a decent starting point if distribution is Gaussian-ish on manifold
-            rec_t = dists_flat.median().item() / 2.0
-            # print(f"[DEBUG FFT] Heuristic Recommendation: T ~ {rec_t:.4f}")
-
     
     # Apply drift to the CURRENT normalized features for Loss
     target = (target_gen + V_total).detach()
@@ -507,17 +455,8 @@ def train_step(
              # WavLM expects (B, T) input
              # gen_audio: (B, T), clean_audio: (B, T)
              with torch.no_grad():
-                 # We don't want to backprop through WavLM
-                 # But we might want to backprop through gen_audio to model?
-                 # Usually V computation treats targets as fixed for the drift, 
-                 # but here x_gen is the source. 
-                 # In pixel drift: target = (x_gen + V).detach(). Loss = MSE(x_gen, target).
-                 # So we need gradients for x_gen -> gen_audio -> model.
-                 # WavLM should be frozen, but we need gradients flow from WavLM output back to input audio?
-                 # WavLMModel parameters are frozen in train(), ensuring no update to WavLM.
-                 # However, we need 'feat_gen' to have grad_fn to backprop to gen_audio.
-                 
-                 # Extract features
+                 # Extract features (Clean)
+                 # WavLM/Hubert output: (B, T_frames, D)
                  # WavLM/Hubert output: (B, T_frames, D)
                  latent_outputs_clean = wavlm_model(normalize_audio(clean_audio), output_hidden_states=True)
                  # feat_clean = latent_outputs_clean.last_hidden_state
@@ -535,19 +474,7 @@ def train_step(
              total_latent_neg_norm_accum = 0.0
              
              for layer_idx in wavlm_layers:
-                 # Check if layer index is valid for WavLM Large (0-24)
-                 # Note: hidden_states is a tuple of (embeddings, layer_1, ..., layer_24)
-                 # So len is 25. layer_idx 24 corresponds to the last transformer layer.
-                 # layer_idx 0 is embeddings? No, typically hidden_states[0] is embeddings in HF.
-                 # Actually, let's verify standard HF usage. 
-                 # documentation says: tuple of torch.FloatTensor (one for the output of the embeddings if model.config.output_embeddings is True, + one for the output of each layer) 
-                 # However, we can just access by index. 
-                 # If user says [6, 12, 24], they probably mean the 6th, 12th, 24th transformer layer.
-                 # In HF bert-like models: hidden_states[0] = embeddings, hidden_states[1] = layer 1 output... hidden_states[24] = layer 24 output.
-                 # So layer_idx 24 is indeed the last layer.
-                 
-                 # So layer_idx 24 is indeed the last layer.
-                 
+                 # Get features for the target layer
                  feat_clean = latent_outputs_clean.hidden_states[layer_idx]
                  feat_gen = latent_outputs_gen.hidden_states[layer_idx]
              
@@ -607,40 +534,6 @@ def train_step(
                  y_pos_lat = f_pos_norm
                  y_neg_lat = f_gen_norm
                  
-                 # DEBUG: Check Latent Feature Distance Scale (Only for first layer to avoid spam)
-                 if IS_DEBUG==True and batch_idx % 500 == 0 and layer_idx == wavlm_layers[0]:
-                     with torch.no_grad():
-                         subset_gen_lat = f_gen_norm[:100]
-                         subset_pos_lat = f_pos_norm[:100]
-                         
-                         dists_lat = torch.cdist(subset_gen_lat, subset_pos_lat, p=2)
-                         mean_dist_lat = dists_lat.mean().item()
-                         min_dist_lat = dists_lat.min().item()
-                         
-                         # Detailed Temperature Analysis - Latent
-                        #  print(f"\n[DEBUG LATENT L{layer_idx}] Params | Norm Mean: {f_gen_norm.abs().mean().item():.4f} | latent_weight: {latent_drift_weight}")
-                         
-                         dists_lat_flat = dists_lat.flatten()
-                        #  print(f"[DEBUG LATENT L{layer_idx}] Dists | Min: {dists_lat_flat.min():.4f} | Median: {dists_lat_flat.median():.4f} | Mean: {dists_lat_flat.mean():.4f}")
-                         
-                         log_strs = []
-                         for t in latent_temps:
-                             logits = -dists_lat / (t + 1e-8)
-                             probs = torch.softmax(logits, dim=1)
-                             
-                             max_p = probs.max(dim=1)[0].mean().item()
-                             perplexity = torch.exp(-torch.sum(probs * torch.log(probs + 1e-10), dim=1)).mean().item()
-                             
-                             status = "Good"
-                             if max_p > 0.9: status = "Too Cold"
-                             elif max_p < (1.5 / subset_pos_lat.shape[0]): status = "Too Hot"
-                             
-                             log_strs.append(f"T={t}: MaxP={max_p:.4f}, Pplx={perplexity:.1f}/{subset_pos_lat.shape[0]} ({status})")
-                         print(f"[DEBUG LATENT L{layer_idx}] " + " | ".join(log_strs))
- 
-                         rec_t_lat = dists_lat_flat.median().item() / 2.0
-                        #  print(f"[DEBUG LATENT L{layer_idx}] Heuristic Recommendation: T ~ {rec_t_lat:.4f}")
- 
                  positive_drift_weight = config.get("Positive_drift_weight", 1.0)
                  negative_drift_weight = config.get("Negative_drift_weight", 1.0)
 

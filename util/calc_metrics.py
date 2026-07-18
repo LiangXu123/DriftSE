@@ -89,9 +89,6 @@ if __name__ == '__main__':
         data["filename"].append(filename)
         data["pesq"].append(pesq(16000, x_16k, x_hat_16k, 'wb'))
         
-        # --- VISQOL CALCULATION DISABLED ---
-        # data["moslqo"].append(visqol_api.Measure(x_16k, x_hat_16k).moslqo)
-        
         data["stoi"].append(
             stoi(x, x_hat, sr_x, extended=False))
         data["estoi"].append(
@@ -109,7 +106,6 @@ if __name__ == '__main__':
 
     # Print results
     print("PESQ: {:.2f} ± {:.2f}".format(*mean_std(df["pesq"].to_numpy())))
-    # print("MOSLQO(ViSQOL): {:.2f} ± {:.2f}".format(*mean_std(df["moslqo"].to_numpy())))
     print("STOI: {:.4f} ± {:.4f}".format(*mean_std(df["stoi"].to_numpy())))
     print("ESTOI: {:.4f} ± {:.4f}".format(*mean_std(df["estoi"].to_numpy())))
     print("SI-SDR: {:.1f} ± {:.1f}".format(*mean_std(df["si_sdr"].to_numpy())))
@@ -122,7 +118,6 @@ if __name__ == '__main__':
     log = open(join(args.enhanced_dir, "_avg_results.txt"), "w")
     log.write("PESQ: {:.2f} ± {:.2f}".format(
         *mean_std(df["pesq"].to_numpy())) + "\n")
-    # log.write("MOSLQO(ViSQOL): {:.2f} ± {:.2f}".format(*mean_std(df["moslqo"].to_numpy())) + "\n")
     log.write("STOI: {:.4f} ± {:.4f}".format(
         *mean_std(df["stoi"].to_numpy())) + "\n")
     log.write("ESTOI: {:.4f} ± {:.4f}".format(

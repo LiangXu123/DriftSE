@@ -140,7 +140,6 @@ if __name__ == '__main__':
     noisy_files = []
     noisy_files += sorted(glob.glob(os.path.join(test_dir, '*.wav')))
     noisy_files += sorted(glob.glob(os.path.join(test_dir, '**', '*.wav')))
-    # noisy_files += sorted(glob.glob(os.path.join(test_dir, '*.flac')))
     
     print(f"Found {len(noisy_files)} files.")
     
@@ -152,8 +151,7 @@ if __name__ == '__main__':
         filename = noisy_file.replace(test_dir, "")
         filename = filename[1:] if filename.startswith("/") else filename
 
-        # try:
-        # Load wav (using torchaudio or librosa)
+        # Load wav
         y, sr = torchaudio.load(noisy_file)
         y = y[0].cpu().numpy() # Mono numpy array
 
@@ -199,11 +197,7 @@ if __name__ == '__main__':
         with torch.no_grad():
             # Forward Pass
             sample = model(Y_input + 0.05*z, t)
-            # sample = model(Y_input, t)
-        
-        # Debug: Check statistics
-        # print(f"Sample Max: {sample.abs().max()}, Min: {sample.abs().min()}")
-
+            
         # Results
         X_hat_trans = sample.squeeze(0).squeeze(0) # (F, T_padded)
         
@@ -226,9 +220,7 @@ if __name__ == '__main__':
             x_hat = x_hat / max_val * norm_factor
         else:
             x_hat = x_hat * norm_factor
-        # x_hat = x_hat * norm_factor
-        # x_hat = x_hat
-        
+            
         # Save
         out_path = os.path.join(enhanced_dir, filename)
         os.makedirs(os.path.dirname(out_path), exist_ok=True)

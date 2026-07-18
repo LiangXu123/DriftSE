@@ -40,7 +40,7 @@
     "model": "ncsnpp_v2_drift",
     "norm_method": "frame_level",
     "drift_method": "frame_level",
-    "batch_size": 8,
+    "batch_size": 6,
     "accumulate_grad_batches": 4,
     "noise_schedule": "log",
     "sigma_max": 0.3,

@@ -77,7 +77,7 @@
     ],
     "data_dir": "./data/voicebank/true_split_train_val_test/16K/",
     "test_dir": "./data/voicebank/true_split_train_val_test/16K/test/noisy",
-    "output_dir": "./logs/distillhubert_three_layers_pesq_sisde_ccmse_with_z",
-    "enhanced_dir": "./out/distillhubert_three_layers_pesq_sisde_ccmse_with_z",
-    "ckpt": "./logs/distillhubert_three_layers_pesq_sisde_ccmse_with_z/last.ckpt"
+    "output_dir": "./logs/distillhubert_three_layers_pesq_sisdr_ccmse_with_z",
+    "enhanced_dir": "./out/distillhubert_three_layers_pesq_sisdr_ccmse_with_z",
+    "ckpt": "./logs/distillhubert_three_layers_pesq_sisdr_ccmse_with_z/last.ckpt"
 }
