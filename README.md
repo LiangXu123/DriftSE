@@ -1,4 +1,4 @@
-## Speech Enhancement Based on Drifting Models (DriftSE) (code coming soon), Interspeech 2026 Oral
+## Speech Enhancement Based on Drifting Models (DriftSE), Interspeech 2026 Oral
 
 🔗 [Project page](https://liangxu123.github.io/driftse/)  🔗 [Paper DriftSE](https://arxiv.org/abs/2604.24199)
 
