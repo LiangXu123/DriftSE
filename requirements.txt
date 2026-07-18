@@ -1,0 +1,37 @@
+# ============================================================
+# DriftSE — Python dependencies
+# Tested with Python 3.11, CUDA 12.6
+# ============================================================
+
+# --- PyTorch (install the CUDA-appropriate wheel separately) ---
+# Install via: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu126
+torch>=2.3.0
+torchaudio>=2.3.0
+
+# --- HuggingFace Transformers (WavLM, HuBERT) ---
+transformers>=4.40.0
+
+# --- Audio I/O ---
+soundfile>=0.12.1
+librosa>=0.10.2
+
+# --- Speech Quality Metrics ---
+pesq>=0.0.4               # PESQ (wideband)
+pystoi>=0.4.1             # STOI / ESTOI
+scoreq>=0.1.0             # SCOREQ (NR and REF modes)
+
+# --- Differentiable Losses ---
+torch-pesq>=0.1.0         # Differentiable PESQ loss (driftse.py: PesqLoss)
+asteroid-filterbanks>=0.4.0  # SI-SDR / PIT loss (driftse.py: pairwise_neg_sisdr, PITLossWrapper)
+
+# --- Scientific Computing ---
+numpy>=1.26.0
+scipy>=1.12.0
+
+# --- Data & Utilities ---
+pandas>=2.2.0
+tqdm>=4.66.0
+torchinfo>=1.8.0          # Model summary (driftse.py: summary)
+
+# --- Experiment Tracking ---
+wandb>=0.17.0
