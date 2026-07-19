@@ -1,26 +1,96 @@
+import os
+import sys
+import warnings
 from os.path import join
 from glob import glob
 from argparse import ArgumentParser
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
 from soundfile import read
 from tqdm import tqdm
 from pesq import pesq
 import pandas as pd
 import librosa
-import os
+
+# Allow importing from parent directory when run from test_script
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from pystoi import stoi
 from other import energy_ratios, mean_std
-import scoreq
 
-import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
+N_WORKERS = max(1, os.cpu_count() - 2) if os.cpu_count() else 1
 
-# Predict quality of natural speech in NR mode
-nr_scoreq = scoreq.Scoreq(data_domain='natural', mode='nr')
-# Predict quality of natural speech in REF mode
-ref_scoreq = scoreq.Scoreq(data_domain='natural', mode='ref')
+def build_file_index(root_dir, ext=".wav"):
+    """Return {basename: absolute_path} for every wav under root_dir."""
+    index = {}
+    for dirpath, _, filenames in os.walk(root_dir):
+        for fn in filenames:
+            if fn.lower().endswith(ext):
+                index[fn] = os.path.join(dirpath, fn)
+    return index
 
+def resolve_clean(rel_path, clean_dir, clean_index):
+    base_name = os.path.basename(rel_path)
+    candidates = [base_name]
+    if '_' in base_name:
+        candidates.append(base_name.split('_')[0] + '.wav')
+        candidates.append("_".join(base_name.split('_')[:-1]) + ".wav")
+
+    for cb in candidates:
+        clean_rel = os.path.join(os.path.dirname(rel_path), cb)
+        for cand in [join(clean_dir, clean_rel), join(clean_dir, cb)]:
+            if os.path.exists(cand):
+                return cand
+        if cb in clean_index:
+            return clean_index[cb]
+    return None
+
+def resolve_enhanced(rel_path, enhanced_dir, enhanced_index):
+    base_name = os.path.basename(rel_path)
+    for cand in [join(enhanced_dir, rel_path),
+                 join(enhanced_dir, base_name),
+                 join(enhanced_dir, rel_path.replace("/", ""))]:
+        if os.path.exists(cand):
+            return cand
+    return enhanced_index.get(base_name, None)
+
+def process_file_parallel(args_tuple):
+    """Compute PESQ / STOI / ESTOI / SI-SDR in a worker process."""
+    rel_path, clean_file, noisy_file, enhanced_file = args_tuple
+
+    try:
+        x,     sr_x     = read(clean_file)
+        y,     _        = read(noisy_file)
+        x_hat, sr_x_hat = read(enhanced_file)
+    except Exception as e:
+        return None, f"Read error for {rel_path}: {e}"
+
+    min_len = min(len(x), len(y), len(x_hat))
+    x     = x[:min_len]
+    y     = y[:min_len]
+    x_hat = x_hat[:min_len]
+    n     = y - x
+
+    x_16k     = librosa.resample(x,     orig_sr=sr_x,     target_sr=16000) if sr_x     != 16000 else x
+    x_hat_16k = librosa.resample(x_hat, orig_sr=sr_x_hat, target_sr=16000) if sr_x_hat != 16000 else x_hat
+    min_16k   = min(len(x_16k), len(x_hat_16k))
+    x_16k, x_hat_16k = x_16k[:min_16k], x_hat_16k[:min_16k]
+
+    pesq_s   = pesq(16000, x_16k, x_hat_16k, 'wb')
+    stoi_s   = stoi(x, x_hat, sr_x, extended=False)
+    estoi_s  = stoi(x, x_hat, sr_x, extended=True)
+    si_sdr_s = energy_ratios(x_hat, x, n)[0]
+
+    row = {
+        "filename":      rel_path,
+        "pesq":          pesq_s,
+        "stoi":          stoi_s,
+        "estoi":         estoi_s,
+        "si_sdr":        si_sdr_s,
+    }
+    return row, None
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -30,104 +100,63 @@ if __name__ == '__main__':
                         help='Directory containing the noisy data')
     parser.add_argument("--enhanced_dir", type=str, required=True,
                         help='Directory containing the enhanced data')
+    parser.add_argument("--workers", type=int, default=N_WORKERS,
+                        help='Number of parallel worker processes')
     args = parser.parse_args()
 
-    # Removed "moslqo" from dictionary initialization
-    data = {"filename": [], "pesq": [], "stoi": [], "estoi": [],
-            "si_sdr": [], "nr_scoreq": [], "ref_scoreq": []}
+    print("Indexing directories...")
+    clean_index    = build_file_index(args.clean_dir)
+    enhanced_index = build_file_index(args.enhanced_dir)
 
-    # Evaluate standard metrics
-    noisy_files = []
-    # Using simple glob to avoid potential duplication if **/*.wav matches *.wav
-    # If your directory structure is flat, just use *.wav. If recursive, use **/*.wav
-    # Combining them might cause duplicates depending on the OS/glob version, 
-    # but keeping your logic to be safe:
-    noisy_files_1 = sorted(glob(join(args.noisy_dir, '*.wav')))
-    noisy_files_2 = sorted(glob(join(args.noisy_dir, '**', '*.wav')))
-    noisy_files = list(set(noisy_files_1 + noisy_files_2)) # Remove duplicates
+    noisy_files = sorted(set(
+        glob(join(args.noisy_dir, '*.wav')) +
+        glob(join(args.noisy_dir, '**', '*.wav'), recursive=True)
+    ))
 
-    for noisy_file in tqdm(noisy_files):
-        # filename = noisy_file.replace(args.noisy_dir, "")[1:]
-        filename = noisy_file.replace(args.noisy_dir, "")
-        filename = str(filename).replace("/", "")
-        
-        # Handle cases where filename might be empty after replace if paths overlap perfectly
-        if not filename: continue 
-
-        if 'dB' in filename:
-            clean_filename = filename.split("_")[0] + ".wav"
-        else:
-            clean_filename = filename
-        
-        try:
-            x, sr_x = read(join(args.clean_dir, clean_filename))
-            y, sr_y = read(join(args.noisy_dir, filename))
-            x_hat, sr_x_hat = read(join(args.enhanced_dir, filename))
-        except Exception as e:
-            print(f"Error reading file {filename}: {e}")
+    tasks, skipped = [], 0
+    for noisy_file in noisy_files:
+        rel_path = os.path.relpath(noisy_file, args.noisy_dir)
+        if not rel_path or rel_path == ".":
             continue
+        clean_file    = resolve_clean(rel_path, args.clean_dir, clean_index)
+        enhanced_file = resolve_enhanced(rel_path, args.enhanced_dir, enhanced_index)
+        if not clean_file or not enhanced_file:
+            skipped += 1
+            continue
+        tasks.append((rel_path, clean_file, noisy_file, enhanced_file))
 
-        # Ensure same length for all arrays
-        min_len = min(len(x), len(y), len(x_hat))
-        x = x[:min_len]
-        y = y[:min_len]
-        x_hat = x_hat[:min_len]
+    print(f"Found {len(tasks)} file pairs ({skipped} skipped).")
 
-        # assert sr_x == sr_y == sr_x_hat
-        n = y - x
+    print(f"\nComputing PESQ / STOI / ESTOI / SI-SDR ({args.workers} workers)...")
+    rows, errors = [], []
 
-        # Resample to 16kHz for PESQ if needed
-        x_hat_16k = librosa.resample(
-            x_hat, orig_sr=sr_x_hat, target_sr=16000) if sr_x_hat != 16000 else x_hat
-        x_16k = librosa.resample(
-            x, orig_sr=sr_x, target_sr=16000) if sr_x != 16000 else x
+    with ProcessPoolExecutor(max_workers=args.workers) as executor:
+        futures = {executor.submit(process_file_parallel, t): t[0] for t in tasks}
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Evaluating"):
+            row, err = future.result()
+            if err:
+                errors.append(err)
+            elif row:
+                rows.append(row)
 
-        min_len_16k = min(len(x_16k), len(x_hat_16k))
-        x_16k = x_16k[:min_len_16k]
-        x_hat_16k = x_hat_16k[:min_len_16k]
+    if errors:
+        print(f"\n{len(errors)} errors:")
+        for e in errors[:5]:
+            print(" ", e)
 
-        data["filename"].append(filename)
-        data["pesq"].append(pesq(16000, x_16k, x_hat_16k, 'wb'))
-        
-        data["stoi"].append(
-            stoi(x, x_hat, sr_x, extended=False))
-        data["estoi"].append(
-            stoi(x, x_hat, sr_x, extended=True))
-        data["si_sdr"].append(energy_ratios(x_hat, x, n)[0])
+    df = pd.DataFrame(rows)
 
-        # Scoreq metrics
-        data["nr_scoreq"].append(nr_scoreq.predict(
-            test_path=join(args.enhanced_dir, filename), ref_path=None))
-        data["ref_scoreq"].append(ref_scoreq.predict(test_path=join(
-            args.enhanced_dir, filename), ref_path=join(args.clean_dir, clean_filename)))
+    lines = [
+        f"Evaluated {len(df)} files",
+        "PESQ:         {:.2f} ± {:.2f}".format(*mean_std(df["pesq"].to_numpy())),
+        "STOI:         {:.4f} ± {:.4f}".format(*mean_std(df["stoi"].to_numpy())),
+        "ESTOI:        {:.4f} ± {:.4f}".format(*mean_std(df["estoi"].to_numpy())),
+        "SI-SDR:       {:.1f} ± {:.1f}".format(*mean_std(df["si_sdr"].to_numpy())),
+    ]
 
-    # Save results as DataFrame
-    df = pd.DataFrame(data)
+    print("\n".join(lines))
 
-    # Print results
-    print("PESQ: {:.2f} ± {:.2f}".format(*mean_std(df["pesq"].to_numpy())))
-    print("STOI: {:.4f} ± {:.4f}".format(*mean_std(df["stoi"].to_numpy())))
-    print("ESTOI: {:.4f} ± {:.4f}".format(*mean_std(df["estoi"].to_numpy())))
-    print("SI-SDR: {:.1f} ± {:.1f}".format(*mean_std(df["si_sdr"].to_numpy())))
-    print("NR_Scoreq: {:.2f} ± {:.2f}".format(
-        *mean_std(df["nr_scoreq"].to_numpy())))
-    print("REF_Scoreq: {:.2f} ± {:.2f}".format(
-        *mean_std(df["ref_scoreq"].to_numpy())))
+    with open(join(args.enhanced_dir, "_avg_results.txt"), "w") as log:
+        log.write("\n".join(lines) + "\n")
 
-    # Save average results to file
-    log = open(join(args.enhanced_dir, "_avg_results.txt"), "w")
-    log.write("PESQ: {:.2f} ± {:.2f}".format(
-        *mean_std(df["pesq"].to_numpy())) + "\n")
-    log.write("STOI: {:.4f} ± {:.4f}".format(
-        *mean_std(df["stoi"].to_numpy())) + "\n")
-    log.write("ESTOI: {:.4f} ± {:.4f}".format(
-        *mean_std(df["estoi"].to_numpy())) + "\n")
-    log.write("SI-SDR: {:.1f} ± {:.2f}".format(*
-        mean_std(df["si_sdr"].to_numpy())) + "\n")
-    log.write("NR_Scoreq: {:.2f} ± {:.2f}".format(*
-        mean_std(df["nr_scoreq"].to_numpy())) + "\n")
-    log.write("REF_Scoreq: {:.2f} ± {:.2f}".format(*
-        mean_std(df["ref_scoreq"].to_numpy())) + "\n")
-
-    # Save DataFrame as csv file
     df.to_csv(join(args.enhanced_dir, "_results.csv"), index=False)

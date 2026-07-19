@@ -175,121 +175,6 @@ def get_noise_schedule(config, batch_size, device):
     t_noise = t_noise.clamp(min=1e-5, max=sigma_max)
     return t_noise
 
-def normalize_data(gen_x, clean_x, config):
-    """
-    Normalize generated and clean features based on config['norm_method'].
-    """
-    B, F, T, C = gen_x.shape
-    norm_method = config.get("norm_method", "none") 
-    
-    # helper to flatten/reshape
-    def to_frame_flat(x): return x.permute(0, 2, 1, 3).reshape(B * T, F * C)
-    def to_utt_flat(x): return x.reshape(B, F * T * C)
-    
-    feat_gen_norm = None
-    feat_pos_norm = None
-    global_scale = 1.0
-
-    if norm_method == 'utterance_level':
-        # Flatten to (B, D_utt)
-        f_gen = to_utt_flat(gen_x)
-        f_pos = to_utt_flat(clean_x) # (B, D)
-        
-        with torch.no_grad():
-            # Norm per utterance
-            utt_scales = torch.norm(f_pos, p=2, dim=1, keepdim=True) + 1e-8
-            global_scale = utt_scales # Keep shape (B, 1) effectively
-        
-        feat_gen_norm = f_gen / global_scale
-        feat_pos_norm = f_pos / global_scale
-        
-    elif norm_method == 'frame_level':
-        # Flatten to (B*T, D_frame)
-        f_gen = to_frame_flat(gen_x)
-        f_pos = to_frame_flat(clean_x)
-        
-        with torch.no_grad():
-            # Global scale based on average frame energy
-            frame_norms = torch.norm(f_pos, p=2, dim=1, keepdim=True)
-            global_scale = frame_norms.mean().clamp(min=1e-5)
-            
-        feat_gen_norm = f_gen / global_scale
-        feat_pos_norm = f_pos / global_scale
-        
-    elif norm_method == 'none':
-        # No normalization, just use raw data. 
-        # Default to frame_level shape for consistency
-        feat_gen_norm = to_frame_flat(gen_x)
-        feat_pos_norm = to_frame_flat(clean_x)
-        global_scale = 1.0
-        
-    else:
-        raise ValueError(f"Unknown norm_method: {norm_method}")
-        
-    return feat_gen_norm, feat_pos_norm, global_scale
-
-
-def compute_drift_term(feat_gen_norm, feat_pos_norm, x_shape, config):
-    """
-    Compute the drift term V based on config['drift_method'].
-    Input features are expected to be in the shape dictated by norm_method.
-    This function handles reshaping if drift_method != norm_method.
-    """
-    B, F, T, C = x_shape
-    norm_method = config.get("norm_method", "none")
-    drift_method = config.get("drift_method", "none")
-    temperatures = config["temperatures"]
-    
-    target_gen = feat_gen_norm
-    target_pos = feat_pos_norm
-    
-    # 1. Reshape if needed
-    if drift_method == 'utterance_level':
-        # We need (B, D_utt)
-        if norm_method == 'frame_level' or norm_method == 'none':
-            # Currently (B*T, D_frame), reshape to (B, D_utt)
-            target_gen = feat_gen_norm.reshape(B, -1)
-            target_pos = feat_pos_norm.reshape(B, -1)
-            
-    elif drift_method == 'frame_level':
-        # We need (B*T, D_frame)
-        if norm_method == 'utterance_level':
-            # Currently (B, D_utt), reshape to (B*T, D_frame)
-            target_gen = feat_gen_norm.reshape(B*T, -1)
-            target_pos = feat_pos_norm.reshape(B*T, -1)
-            
-    else:
-        raise ValueError(f"Unknown drift_method: {drift_method}")
-
-    # Set up History/Negatives
-    y_pos_all = target_pos
-    y_neg_all = target_gen
-    mask_self = True
-
-    # Compute V
-    V_total = torch.zeros_like(target_gen)
-    
-    positive_drift_weight = config.get("Positive_drift_weight", 1.0)
-    negative_drift_weight = config.get("Negative_drift_weight", 1.0)
-    
-    for tau in temperatures:
-        V_tau = compute_V(
-            target_gen,
-            y_pos_all,
-            y_neg_all,
-            tau,
-            mask_self=mask_self,
-            positive_drift_weight=positive_drift_weight,
-            negative_drift_weight=negative_drift_weight
-        )
-        # v_norm = torch.sqrt(torch.mean(V_tau ** 2) + 1e-8)
-        # V_tau = V_tau / (v_norm + 1e-8)
-        V_total += V_tau
-
-    V_total /= len(temperatures)
-    
-    # Return inputs used for drift (target_gen) so we can compute loss against them + V
-    return V_total, target_gen, target_pos
 
 def train_step(
     model: nn.Module,
@@ -316,8 +201,6 @@ def train_step(
     normfac = normfac.to(device)  # (B,) scalar per sample
 
     batch_size = clean_speech.shape[0]
-    temperatures = config["temperatures"]
-    smooth_drift = config.get("smooth_drift", False) 
 
     # 1. Prepare Inputs for NCSN++ (Complex Tensors)
     # (B, 2, F, T) Real -> Permute -> (B, F, T, 2) -> Complex (B, F, T) -> Unsqueeze -> (B, 1, F, T)
@@ -352,40 +235,8 @@ def train_step(
     x_gen_real = torch.view_as_real(x_gen_complex.squeeze(1)) # (B, F, T, 2)
     clean_speech_flat = torch.view_as_real(x_pos_complex.squeeze(1)) # (B, F, T, 2)
 
-    # 3. Compute Drifting Loss
-    # Flatten features (Treat each time frame as a sample)
-    # x_gen_real: (B, F, T, 2)
-    # Permute to (B, T, F, 2) -> Reshape to (B * T, F * 2)
-    # This reduces dimensionality from 131,072 (entire spec) to 512 (one frame)
-    # 3. Compute Drifting Loss
-    # 3. Compute Drifting Loss
-    
-    # helper to flatten/reshape
-    B, F, T, C = x_gen_real.shape
-    
-    # 3a. Normalize Data
-    feat_gen_norm, feat_pos_norm, global_scale = normalize_data(x_gen_real, clean_speech_flat, config)
-        
-    # 3b. Compute Drift Term
-    V_total, target_gen, target_pos = compute_drift_term(feat_gen_norm, feat_pos_norm, x_gen_real.shape, config)
-
-    
-    # Apply drift to the CURRENT normalized features for Loss
-    target = (target_gen + V_total).detach()
-    
-    drift_weight = config.get("drift_weight", 1.0)
-    drift_loss = FF.mse_loss(target_gen, target) * drift_weight if drift_weight > 0 else 0.0
-    loss = drift_loss
-    # 2. Temporal Smoothing (The fix for Frame-wise)
-    drift_smooth = 0.0
-    if str(smooth_drift).lower() == 'true':
-        V_seq = V_total.reshape(B, T, -1) # Put the Time dimension back
-        # This penalizes sharp "jumps" in drift direction between frame t and t+1
-        drift_smooth = FF.mse_loss(V_seq[:, 1:], V_seq[:, :-1])
-
-        # 3. Combined Loss
-        loss += 0.1 * drift_smooth    
-
+    # Initialize loss
+    loss = 0.0
     # --- Add PESQ / SISDR Loss ---
     pesq_loss_val = 0.0
     sisdr_loss_val = 0.0
@@ -484,10 +335,6 @@ def train_step(
                  # We can treat T dimension as 'frames' similar to spectrogram frames, 
                  # but they are much fewer (20ms stride).
                  
-                 # Need to normalize inputs to compute_drift_term or compute_V
-                 # compute_drift_term expects (B, F, T, C) or similar structure if we use it.
-                 # But here we have (B, T, D). Let's use drifting.normalize_features directly 
-                 # or adapt to compute_drift_term's expected shape.
                  
                  # Latent Drift Method
                  latent_drift_method = config.get("latent_drift_method", "frame_level")
@@ -596,17 +443,11 @@ def train_step(
     else:
         grad_norm = torch.tensor(0.0)
 
-    # Metrics
-    drift_norm = (V_total ** 2).mean().item() ** 0.5
-    
     # Unscale loss for logging
     loss_val = loss.item() * accumulate_grad_batches
     
     return {
         "loss": loss_val,
-        "drift_loss": drift_loss.item() if isinstance(drift_loss, torch.Tensor) else drift_loss,
-        "drift_norm": drift_norm,
-        "drift_smooth": drift_smooth.item() if isinstance(drift_smooth, torch.Tensor) else drift_smooth,
         "pesq": pesq_loss_val.item() if isinstance(pesq_loss_val, torch.Tensor) else pesq_loss_val,
         "sisdr": sisdr_loss_val.item() if isinstance(sisdr_loss_val, torch.Tensor) else sisdr_loss_val,
         "ccmse": ccmse_loss_val.item() if isinstance(ccmse_loss_val, torch.Tensor) else ccmse_loss_val,
@@ -836,13 +677,7 @@ def train(
             lr = scheduler.get_lr()
             wandb.log({
                 "loss": info['loss'],
-                "drift_loss": info['drift_loss'],
                 "latent_drift": info['latent_drift'],                
-                "latent_total_norm": info.get('latent_total_norm', 0.0),
-                "latent_pos_norm": info.get('latent_pos_norm', 0.0),
-                "latent_neg_norm": info.get('latent_neg_norm', 0.0),
-                "drift_norm": info['drift_norm'],
-                "drift_smooth": info['drift_smooth'],
                 "ccmse": info['ccmse'],                
                 "pesq": info['pesq'],
                 "sisdr": info['sisdr'],
@@ -851,19 +686,16 @@ def train(
                 "epoch": epoch
             }, step=global_step)
             # Update pbar
-            pbar.set_postfix({
-                "Loss": f"{info['loss']:.6f}",
-                "drift": f"{info['drift_loss']:.6f}",
-                "latent": f"{info['latent_drift']:.6f}",                
-                "ccmse": f"{info['ccmse']:.6f}",                
-                "L_norm": f"{info.get('latent_total_norm', 0.0):.4f}",
-                "P_norm": f"{info.get('latent_pos_norm', 0.0):.4f}",
-                "N_norm": f"{info.get('latent_neg_norm', 0.0):.4f}",
-                "d_norm": f"{info['drift_norm']:.6f}",
-                "d_smt": f"{info['drift_smooth']:.6f}",
-                "sisdr": f"{info['sisdr']:.6f}",                
-                "pesq": f"{info['pesq']:.6f}"
-            })
+            pbar_dict = {"Loss": f"{info['loss']:.8f}"}
+            if config.get("latent_drift_weight", 0.0) > 0:
+                pbar_dict["Latnt"] = f"{info['latent_drift']:.8f}"
+            if config.get("ccmse_weight", 0.0) > 0:
+                pbar_dict["CMSE"] = f"{info['ccmse']:.8f}"
+            if config.get("sisdr_weight", 0.0) > 0:
+                pbar_dict["SDR"] = f"{info['sisdr']:.6f}"
+            if config.get("pesq_weight", 0.0) > 0:
+                pbar_dict["PESQ"] = f"{info['pesq']:.6f}"
+            pbar.set_postfix(pbar_dict)
 
         # Handle last batch if not perfectly divisible
         if (batch_idx + 1) % config.get("accumulate_grad_batches", 1) != 0:
@@ -871,10 +703,19 @@ def train(
              optimizer.zero_grad()
         avg_loss = epoch_loss / max(num_batches, 1)
         
-        print(f"Epoch {epoch+1} | {time.time()-epoch_start:.1f}s | Loss: {avg_loss:.8f} | L: {info['latent_drift']:.8f} | CCMSE: {info['ccmse']:.6f} | P: {info['pesq']:.5f} | S: {info['sisdr']:.5f}")
+        log_str = f"Epoch {epoch+1} | {time.time()-epoch_start:.1f}s | Loss: {avg_loss:.8f}"
+        if config.get("latent_drift_weight", 0.0) > 0:
+            log_str += f" | L: {info['latent_drift']:.8f}"
+        if config.get("ccmse_weight", 0.0) > 0:
+            log_str += f" | CCMSE: {info['ccmse']:.6f}"
+        if config.get("pesq_weight", 0.0) > 0:
+            log_str += f" | P: {info['pesq']:.5f}"
+        if config.get("sisdr_weight", 0.0) > 0:
+            log_str += f" | S: {info['sisdr']:.5f}"
+        
+        print(log_str)
 
         wandb.log({"epoch_loss": avg_loss, 
-        "drift_norm": info['drift_norm'],
         "ccmse": info['ccmse'],        
         "pesq": info['pesq'],
         "sisdr": info['sisdr'],
