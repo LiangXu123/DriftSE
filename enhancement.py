@@ -195,8 +195,12 @@ if __name__ == '__main__':
         t = torch.ones(batch_size, device=device) 
         
         with torch.no_grad():
-            # Forward Pass
-            sample = model(Y_input + 0.05*z, t)
+            train_add_gaussian = config.get('train_add_gaussian', True)
+            if str(train_add_gaussian).lower() == 'true':
+                # Forward Pass
+                sample = model(Y_input + 0.05*z, t)
+            else:
+                sample = model(Y_input, t)
             
         # Results
         X_hat_trans = sample.squeeze(0).squeeze(0) # (F, T_padded)

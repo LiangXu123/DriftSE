@@ -624,7 +624,7 @@ def train(
     resume: Optional[str] = None,
     num_workers: int = 8,
     log_interval: int = 50,
-    save_interval: int = 1,
+    save_interval: int = 10,
 ):
     """Main training loop."""
     set_seed(seed)

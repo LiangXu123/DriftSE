@@ -18,10 +18,10 @@ if [ "$#" -ge 2 ]; then
     CONFIGS=("$2")
 else
     CONFIGS=(       
-        # "./config/with_z/v2_drift2_distillhubert_three_layers.json"
-        # "./config/with_z/v2_drift2_distillhubert_three_layers_pesq_sisdr_ccmse.json"
-        "./config/with_z/v2_drift2_hubert_three_layers.json"
-        "./config/with_z/v2_drift2_wavelm_three_layers.json"
+        "./config/with_z/v2_drift2_distillhubert_three_layers.json"
+        "./config/with_z/v2_drift2_distillhubert_three_layers_pesq_sisdr_ccmse.json"
+        # "./config/with_z/v2_drift2_hubert_three_layers.json"
+        # "./config/with_z/v2_drift2_wavelm_three_layers.json"
     )
 fi
 # Assert all config files exist
