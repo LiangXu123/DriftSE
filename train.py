@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import numpy as np
 import torch
+import pytorch_optimizer as optim 
 import torch.nn as nn
 import torch.nn.functional as FF
 from torch.utils.data import DataLoader
@@ -627,12 +628,21 @@ def train(
     ema = EMA(model, decay=config["ema_decay"])
 
     # Optimizer
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=config["lr"],
-        betas=(0.9, 0.95),
-        weight_decay=config["weight_decay"],
-    )
+    if config.get("SOAP", False):
+        optimizer = optim.SOAP(
+            model.parameters(),
+            lr=config["lr"],
+            betas=(0.95, 0.95),
+            weight_decay=config["weight_decay"],
+            precondition_frequency=5
+        )
+    else:
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=config["lr"],
+            betas=(0.9, 0.95),
+            weight_decay=config["weight_decay"],
+        )
 
     # Scheduler
     steps_per_epoch = len(train_loader)

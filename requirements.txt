@@ -7,7 +7,7 @@
 # Install via: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu126
 torch>=2.3.0
 torchaudio>=2.3.0
-
+pytorch-optimizer
 # --- HuggingFace Transformers (WavLM, HuBERT) ---
 transformers>=4.40.0
 
