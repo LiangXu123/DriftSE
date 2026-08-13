@@ -6,7 +6,7 @@ This repository provides the official implementation of the following paper:
 Liang Xu, Diego Caviedes-Nozal, W. Bastiaan Kleijn, Longfei Felix Yan, Rasmus Kongsgaard Olsson
 *Interspeech 2026*
 
-🔗 [**Project Website**](https://liangxu123.github.io/driftse/)  |  📄 [**arXiv Preprint**](https://arxiv.org/abs/2604.24199)
+🔗 [**Project Website**](https://liangxu123.github.io/driftse/)  |  📄 [**arXiv Preprint**](https://arxiv.org/abs/2604.24199)  |  📜 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 ---
 
@@ -194,6 +194,12 @@ We release the pre-trained model checkpoint and the corresponding enhanced audio
 ls ./logs/   # distillhubert_three_layers_with_z/last.ckpt, ...
 ls ./out/    # distillhubert_three_layers_with_z/
 ```
+
+---
+
+## 📜 License
+
+This project is licensed under the [MIT License](./LICENSE).
 
 ---
 
