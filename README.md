@@ -183,16 +183,24 @@ We release the pre-trained model checkpoint and the corresponding enhanced audio
 
 | Resource | Description | Link |
 |---|---|---|
-| **Checkpoint** (`logs/`) | Trained DriftSE model weights | [Google Drive](https://drive.google.com/file/d/1ekzJQidIojhjlj6oaUzQBKp4Pil6jIz7/view?usp=sharing) |
-| **Enhanced Audio** (`out/`) | Enhanced VB-DMD test set outputs | [Google Drive](https://drive.google.com/file/d/1xdfUnp6Pc02Ug137dCPTvyNc3uYjO0dh/view?usp=sharing) |
+| **Checkpoint** (`logs/`) | Trained DriftSE model weights | [Google Drive](https://drive.google.com/file/d/1ekzJQidIojhjlj6oaUzQBKp4Pil6jIz7/view?usp=sharing) · [🤗 Hugging Face](https://huggingface.co/LIANGXU123/DriftSE/tree/main/logs) |
+| **Enhanced Audio** (`out/`) | Enhanced VB-DMD test set outputs | [Google Drive](https://drive.google.com/file/d/1xdfUnp6Pc02Ug137dCPTvyNc3uYjO0dh/view?usp=sharing) · [🤗 Hugging Face](https://huggingface.co/LIANGXU123/DriftSE/tree/main/out) |
 
-**Usage:** Download and extract each archive into the repository root so the paths match the config defaults:
+**Usage (Google Drive):** Download and extract each archive into the repository root so the paths match the config defaults:
 
 ```bash
 # Checkpoint → ./logs/
 # Enhanced audio → ./out/
 ls ./logs/   # distillhubert_three_layers_with_z/last.ckpt, ...
 ls ./out/    # distillhubert_three_layers_with_z/
+```
+
+**Usage (Hugging Face Hub):** Download programmatically with version pinning:
+
+```python
+from huggingface_hub import hf_hub_download
+
+ckpt_path = hf_hub_download("LIANGXU123/DriftSE", "logs/distillhubert_three_layers_with_z/last.ckpt")
 ```
 
 ---
