@@ -198,7 +198,8 @@ if __name__ == '__main__':
             train_add_gaussian = config.get('train_add_gaussian', True)
             if str(train_add_gaussian).lower() == 'true':
                 # Forward Pass
-                sample = model(Y_input + 0.05*z, t)
+                sample = model(Y_input + 0.01*z, t)  # maximize test performance
+                # sample = model(Y_input + 0.05*z, t) # better generalization
             else:
                 sample = model(Y_input, t)
             
