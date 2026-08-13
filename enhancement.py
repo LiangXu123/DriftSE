@@ -130,7 +130,9 @@ if __name__ == '__main__':
 
     checkpoint = torch.load(ckpt_path, map_location=device)
     # Check if checkpoint is dict or model state
-    if "model" in checkpoint:
+    if "ema" in checkpoint:
+        model.load_state_dict(checkpoint["ema"])
+    elif "model" in checkpoint:
         model.load_state_dict(checkpoint["model"])
     else:
         model.load_state_dict(checkpoint)
