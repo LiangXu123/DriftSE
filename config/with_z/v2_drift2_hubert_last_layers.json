@@ -67,8 +67,8 @@
         0.5,
         1.0
     ],
-    "data_dir": "./data/voicebank/true_split_train_val_test/16K/",
-    "test_dir": "./data/voicebank/true_split_train_val_test/16K/test/noisy",
+    "data_dir": "/vol/liangxu-solar/data/voicebank/VoiceBank-DEMAND-16k-wav/",
+    "test_dir": "/vol/liangxu-solar/data/voicebank/VoiceBank-DEMAND-16k-wav/test/noisy/",
     "output_dir": "./logs/hubert_last_layer_with_z",
     "enhanced_dir": "./out/hubert_last_layer_with_z",
     "ckpt": "./logs/hubert_last_layer_with_z/last.ckpt"
