@@ -41,6 +41,8 @@ Liang Xu, Diego Caviedes-Nozal, W. Bastiaan Kleijn, Longfei Felix Yan, Rasmus Ko
 
 > † Jointly trained with auxiliary PESQ and SI-SDR losses.
 > *Italic rows*: DriftSE ablation and unpaired variants.
+> 
+> 📌 **Note on Dataset Alignment & Retrained Checkpoints**: Original paper evaluations were conducted on custom 48kHz→16kHz downsampled VB-DMD. Due to resampling filter differences across downsampled versions (causing minor metric offsets on standard 16kHz releases), all open-source models have been retrained on [`JacobLinCool/VoiceBank-DEMAND-16k`](https://huggingface.co/datasets/JacobLinCool/VoiceBank-DEMAND-16k). For detailed metric comparisons, discussions, and exact retrained numbers, please see [GitHub Issue #1](https://github.com/LiangXu123/DriftSE/issues/1).
 
 ### DNS Challenge 2020 Blind Test Set — Real-World Generalization
 
