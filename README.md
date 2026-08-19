@@ -98,7 +98,7 @@ Training uses **dynamic mixing**: 10,802 clean VoiceBank utterances are mixed on
 
 ## 🤗 SSL Encoder Checkpoints
 
-DriftSE uses frozen self-supervised speech encoders (WavLM-Large, HuBERT-Large, DistilHuBERT) to compute the latent drifting field. These must be downloaded **before** training.
+DriftSE uses frozen self-supervised speech encoders (WavLM-Large, HuBERT-Large, DistilHuBERT) to compute the latent drifting field. These must be downloaded **before** training. *(Note: If you used the Quick Start command, these are already downloaded!)*
 
 **Download:** [🤗 Hugging Face — `latent_ckpt/`](https://huggingface.co/LIANGXU123/DriftSE/tree/main/latent_ckpt)
 
@@ -192,7 +192,7 @@ The evaluation pipeline runs two sequential phases:
 
 ## 🔗 Pre-trained Checkpoints & Enhanced Audio
 
-We release the pre-trained model checkpoint and the corresponding enhanced audio outputs to facilitate reproducibility.
+We release the pre-trained model checkpoint and the corresponding enhanced audio outputs to facilitate reproducibility. *(Note: If you used the Quick Start command, these are already downloaded!)*
 
 | Resource | Description | Link |
 |---|---|---|
