@@ -40,7 +40,7 @@
     "model": "ncsnpp_v2_drift",
     "norm_method": "frame_level",
     "drift_method": "frame_level",
-    "batch_size": 48,
+    "batch_size": 56,
     "accumulate_grad_batches": 1,
     "noise_schedule": "log",
     "sigma_max": 0.15,
@@ -59,20 +59,20 @@
     "latent_drift_weight": 1.0,
     "train_add_gaussian": true,
     "latent_drift_method": "frame_level",
-    "latent_model_type": "wavlm",
+    "latent_model_type": "distillhubert",
     "feature_layers": [
-        6,
-        12,
-        24
+        0,
+        1,
+        2
     ],
     "latent_temperatures": [
-        0.02,
-        0.05,
-        0.1
+        0.1,
+        0.5,
+        1.0
     ],
     "data_dir": "/vol/liangxu-solar/data/voicebank/VoiceBank-DEMAND-16k-wav/",
     "test_dir": "/vol/liangxu-solar/data/voicebank/VoiceBank-DEMAND-16k-wav/test/noisy/",
-    "output_dir": "./logs/wavlm_three_layers_with_z",
-    "enhanced_dir": "./out/wavlm_three_layers_with_z",
-    "ckpt": "./logs/wavlm_three_layers_with_z/last.ckpt"
+    "output_dir": "./logs/distillhubert_three_layers_with_z",
+    "enhanced_dir": "./out/distillhubert_three_layers_with_z",
+    "ckpt": "./logs/distillhubert_three_layers_with_z/last.ckpt"
 }
