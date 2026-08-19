@@ -10,21 +10,6 @@ Liang Xu, Diego Caviedes-Nozal, W. Bastiaan Kleijn, Longfei Felix Yan, Rasmus Ko
 
 ---
 
-## 🤗 Quick Start
-
-Download all checkpoints, logs, and outputs from Hugging Face directly into your repository:
-
-```bash
-# Via Hugging Face CLI
-hf download LIANGXU123/DriftSE --local-dir .
-
-# Or via Git LFS
-git lfs install
-git clone https://huggingface.co/LIANGXU123/DriftSE
-```
-
----
-
 ## 📖 Highlights
 
 - **Novel Generative Paradigm:** Formulates speech enhancement as a distributional equilibrium problem, eliminating the need for iterative denoising or trajectory-based sampling.
@@ -87,6 +72,19 @@ pip install -r requirements.txt
 ```
 
 *Note: For experiment tracking via Weights & Biases (W&B), please configure your environment using `wandb login` prior to initiating training. By default, `train.sh` sets `WANDB_MODE=dryrun` to run offline.*
+
+### 🤗 Quick Start: Download Models & Outputs
+
+Download all checkpoints, logs, and outputs from Hugging Face directly into your repository:
+
+```bash
+# Via Hugging Face CLI
+hf download LIANGXU123/DriftSE --local-dir .
+
+# Or via Git LFS
+git lfs install
+git clone https://huggingface.co/LIANGXU123/DriftSE
+```
 
 ---
 
