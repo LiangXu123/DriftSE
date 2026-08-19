@@ -6,7 +6,22 @@ This repository provides the official implementation of the following paper:
 Liang Xu, Diego Caviedes-Nozal, W. Bastiaan Kleijn, Longfei Felix Yan, Rasmus Kongsgaard Olsson
 *Interspeech 2026*
 
-🔗 [**Project Website**](https://liangxu123.github.io/driftse/)  |  📄 [**arXiv Preprint**](https://arxiv.org/abs/2604.24199)  |  📜 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+🔗 [**Project Website**](https://liangxu123.github.io/driftse/)  |  📄 [**arXiv Preprint**](https://arxiv.org/abs/2604.24199)  |  📜 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)  |  🤗 [**Hugging Face Models**](https://huggingface.co/LIANGXU123/DriftSE)
+
+---
+
+## 🤗 Quick Start
+
+Download all checkpoints, logs, and outputs from Hugging Face directly into your repository:
+
+```bash
+# Via Hugging Face CLI
+hf download LIANGXU123/DriftSE --local-dir .
+
+# Or via Git LFS
+git lfs install
+git clone https://huggingface.co/LIANGXU123/DriftSE
+```
 
 ---
 
@@ -87,7 +102,7 @@ Training uses **dynamic mixing**: 10,802 clean VoiceBank utterances are mixed on
 
 DriftSE uses frozen self-supervised speech encoders (WavLM-Large, HuBERT-Large, DistilHuBERT) to compute the latent drifting field. These must be downloaded **before** training.
 
-**Download:** [Google Drive — `latent_ckpt/`](https://drive.google.com/file/d/1NFW91B7jwwJV4dUtcOZyaaHyihjBiuKc/view?usp=sharing)
+**Download:** [🤗 Hugging Face — `latent_ckpt/`](https://huggingface.co/LIANGXU123/DriftSE/tree/main/latent_ckpt)
 
 The folder contains three sub-directories:
 
@@ -98,7 +113,7 @@ latent_ckpt/
 └── distilhubert-local/      # DistilHuBERT (768-d, 2 layers)
 ```
 
-Extract and place the downloaded folder at the **root of this repository** so the paths resolve to `./latent_ckpt/`:
+Ensure the `latent_ckpt` folder is placed at the **root of this repository** so the paths resolve to `./latent_ckpt/`:
 
 ```bash
 # After downloading, your directory should look like:
@@ -183,25 +198,8 @@ We release the pre-trained model checkpoint and the corresponding enhanced audio
 
 | Resource | Description | Link |
 |---|---|---|
-| **Checkpoint** (`logs/`) | Trained DriftSE model weights | [Google Drive](https://drive.google.com/file/d/1ekzJQidIojhjlj6oaUzQBKp4Pil6jIz7/view?usp=sharing) · [🤗 Hugging Face](https://huggingface.co/LIANGXU123/DriftSE/tree/main/logs) |
-| **Enhanced Audio** (`out/`) | Enhanced VB-DMD test set outputs | [Google Drive](https://drive.google.com/file/d/1xdfUnp6Pc02Ug137dCPTvyNc3uYjO0dh/view?usp=sharing) · [🤗 Hugging Face](https://huggingface.co/LIANGXU123/DriftSE/tree/main/out) |
-
-**Usage (Google Drive):** Download and extract each archive into the repository root so the paths match the config defaults:
-
-```bash
-# Checkpoint → ./logs/
-# Enhanced audio → ./out/
-ls ./logs/   # distillhubert_three_layers_with_z/last.ckpt, ...
-ls ./out/    # distillhubert_three_layers_with_z/
-```
-
-**Usage (Hugging Face Hub):** Download programmatically with version pinning:
-
-```python
-from huggingface_hub import hf_hub_download
-
-ckpt_path = hf_hub_download("LIANGXU123/DriftSE", "logs/distillhubert_three_layers_with_z/last.ckpt")
-```
+| **Checkpoint** (`logs/`) | Trained DriftSE model weights | [🤗 Hugging Face](https://huggingface.co/LIANGXU123/DriftSE/tree/main/logs) |
+| **Enhanced Audio** (`out/`) | Enhanced VB-DMD test set outputs | [🤗 Hugging Face](https://huggingface.co/LIANGXU123/DriftSE/tree/main/out) |
 
 ---
 
