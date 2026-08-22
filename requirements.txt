@@ -35,3 +35,5 @@ torchinfo>=1.8.0          # Model summary (driftse.py: summary)
 
 # --- Experiment Tracking ---
 wandb>=0.17.0
+gradio>=4.0.0
+huggingface-hub>=0.20.0
