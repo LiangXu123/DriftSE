@@ -1,22 +1,3 @@
----
-license: mit
-language:
-  - en
-tags:
-  - speech-enhancement
-  - drifting-models
-  - generative-model
-  - one-step-inference
-  - audio
-  - speech
-  - denoising
-  - self-supervised-learning
-datasets:
-  - voicebank-demand
-pipeline_tag: audio-to-audio
-library_name: pytorch
----
-
 # DriftSE — Speech Enhancement Based on Drifting Models
 
 [![arXiv](https://img.shields.io/badge/%F0%9F%93%84%20arXiv-2604.24199-red.svg)](https://arxiv.org/abs/2604.24199)
