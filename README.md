@@ -31,18 +31,24 @@ You can easily try out DriftSE without any local installation! Visit our **[Hugg
 
 ## 📦 Repository Contents
 
-This Hugging Face repository hosts pre-trained checkpoints and enhanced audio outputs for **DriftSE**.
+The [Hugging Face repository](https://huggingface.co/LIANGXU123/DriftSE) hosts pre-trained checkpoints, SSL latent encoders, and enhanced audio outputs for **DriftSE**:
 
 ```
 LIANGXU123/DriftSE/
-├── logs/                                          # Pre-trained model checkpoints
+├── logs/                                              # Pre-trained DriftSE checkpoints
 │   ├── distillhubert_three_layers_with_z/
-│   │   └── last.ckpt                              # DriftSE (DistilHuBERT) — conditional generator
-│   └── distillhubert_three_layers_pesq_sisdr_ccmse_with_z/
-│       └── last.ckpt                              # DriftSE† (DistilHuBERT) — with auxiliary losses
-└── out/                                           # Enhanced audio outputs
-    ├── distillhubert_three_layers_with_z/          # Enhanced VB-DMD test set (DriftSE)
-    └── distillhubert_three_layers_pesq_sisdr_ccmse_with_z/  # Enhanced VB-DMD test set (DriftSE†)
+│   │   └── last.ckpt                                  # DriftSE (DistilHuBERT) — conditional generator
+│   ├── distillhubert_three_layers_pesq_sisdr_ccmse_with_z/
+│   │   └── last.ckpt                                  # DriftSE† (DistilHuBERT) — with auxiliary losses
+│   ├── hubert_three_layers_with_z/
+│   │   └── last.ckpt                                  # DriftSE (HuBERT) — conditional generator
+│   └── wavlm_three_layers_with_z/
+│       └── last.ckpt                                  # DriftSE (WavLM) — conditional generator
+├── latent_ckpt/                                       # Frozen SSL speech encoders (for training/features)
+│   ├── distilhubert-local/                            # DistilHuBERT (768-d, 2 layers)
+│   ├── hubert-large-local/                            # HuBERT-Large (1024-d, 24 layers)
+│   └── wavlm-large-local/                             # WavLM-Large (1024-d, 24 layers)
+└── out.zip                                            # Pre-computed enhanced audio outputs (VB-DMD test set)
 ```
 
 ---
@@ -92,29 +98,23 @@ cd driftse
 pip install -r requirements.txt
 ```
 
-### 2. Download Checkpoint
+### 2. Download Checkpoints & Assets
 
-```python
-from huggingface_hub import hf_hub_download
-
-# DriftSE (DistilHuBERT) — conditional generator
-ckpt_path = hf_hub_download(
-    "LIANGXU123/DriftSE",
-    "logs/distillhubert_three_layers_with_z/last.ckpt"
-)
-
-# DriftSE† (DistilHuBERT) — with auxiliary PESQ/SI-SDR/CCMSE losses
-ckpt_path_aux = hf_hub_download(
-    "LIANGXU123/DriftSE",
-    "logs/distillhubert_three_layers_pesq_sisdr_ccmse_with_z/last.ckpt"
-)
-```
-
-Or via CLI:
+Download all checkpoints and assets directly into the project directory:
 
 ```bash
-# Download the full repository
-huggingface-cli download LIANGXU123/DriftSE --local-dir ./DriftSE_hf
+huggingface-cli download LIANGXU123/DriftSE --local-dir .
+
+# (Optional) Extract pre-generated enhanced audio outputs
+unzip -q out.zip
+```
+
+Or via Python:
+
+```python
+from huggingface_hub import snapshot_download
+
+snapshot_download("LIANGXU123/DriftSE", local_dir=".")
 ```
 
 ### 3. Run Enhancement
@@ -157,9 +157,21 @@ The evaluation pipeline runs two phases:
 
 ## 🤗 SSL Encoder Checkpoints
 
-DriftSE requires frozen self-supervised speech encoders to compute the latent drifting field during training. These are **not** needed for inference with the pre-trained checkpoints above.
+DriftSE uses frozen self-supervised speech encoders to compute the latent drifting field during training (already included if you downloaded the repository via step 2; **not** needed for inference).
 
-**Download:** [Google Drive — `latent_ckpt/`](https://drive.google.com/file/d/1NFW91B7jwwJV4dUtcOZyaaHyihjBiuKc/view?usp=sharing)
+To download only the latent SSL encoders:
+
+```bash
+huggingface-cli download LIANGXU123/DriftSE --include "latent_ckpt/*" --local-dir .
+```
+
+Or via Python:
+
+```python
+from huggingface_hub import snapshot_download
+
+snapshot_download("LIANGXU123/DriftSE", allow_patterns=["latent_ckpt/*"], local_dir=".")
+```
 
 ```
 latent_ckpt/
