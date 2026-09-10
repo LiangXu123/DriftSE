@@ -1,4 +1,4 @@
-# DriftSE — Speech Enhancement Based on Drifting Models
+# DriftSE: Speech Enhancement with Generative Drifting
 
 [![arXiv](https://img.shields.io/badge/%F0%9F%93%84%20arXiv-2604.24199-red.svg)](https://arxiv.org/abs/2604.24199)
 [![github](https://img.shields.io/badge/Code-GitHub-black?logo=github)](https://github.com/liangxu123/driftse)
@@ -205,11 +205,12 @@ Training uses **dynamic mixing**: 10,802 clean VoiceBank utterances are mixed on
 If you find DriftSE useful in your research, please cite:
 
 ```bibtex
-@inproceedings{xu2026driftse,
+@inproceedings{xu2026driftse_taslp,
   author    = {Liang Xu and Diego Caviedes-Nozal and W. Bastiaan Kleijn and Longfei Felix Yan and Rasmus Kongsgaard Olsson},
   title     = {Speech Enhancement Based on Drifting Models},
-  booktitle = {Proc. Interspeech 2026},
-  year      = {2026}
+  journal = {IEEE/ACM Transactions on Audio, Speech, and Language Processing},
+  year      = {2026},
+  note    = {Submitted},
 }
 ```
 
