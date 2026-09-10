@@ -103,7 +103,7 @@ pip install -r requirements.txt
 Download all checkpoints and assets directly into the project directory:
 
 ```bash
-huggingface-cli download LIANGXU123/DriftSE --local-dir .
+huggingface-cli download LIANGXU123/DriftSE --revision dual-latent-DriftSE --local-dir .
 
 # (Optional) Extract pre-generated enhanced audio outputs
 unzip -q out.zip
@@ -114,7 +114,7 @@ Or via Python:
 ```python
 from huggingface_hub import snapshot_download
 
-snapshot_download("LIANGXU123/DriftSE", local_dir=".")
+snapshot_download("LIANGXU123/DriftSE", revision="dual-latent-DriftSE", local_dir=".")
 ```
 
 ### 3. Run Enhancement
