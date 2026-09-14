@@ -1,4 +1,4 @@
-# DriftSE — Speech Enhancement Based on Drifting Models
+# Speech Enhancement Based on Drifting Models
 
 [![arXiv](https://img.shields.io/badge/%F0%9F%93%84%20arXiv-2604.24199-red.svg)](https://arxiv.org/abs/2604.24199)
 [![github](https://img.shields.io/badge/Code-GitHub-black?logo=github)](https://github.com/liangxu123/driftse)
