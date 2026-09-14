@@ -17,6 +17,9 @@
 [![github](https://img.shields.io/badge/Code-GitHub-black?logo=github)](https://github.com/LiangXu123/DriftSE/tree/dual-latent-DriftSE)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ---
+> **DriftSE: Speech Enhancement with Generative Drifting** (Submitted to IEEE/ACM TASLP for possible publication. )
+>
+> *Liang Xu, Diego Caviedes-Nozal, W. Bastiaan Kleijn, Longfei Felix Yan, Rasmus Kongsgaard Olsson*
 
 ## ✨ Key Highlights
 
