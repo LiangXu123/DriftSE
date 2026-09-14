@@ -220,6 +220,15 @@ If you find DriftSE useful in your research, please cite:
   year      = {2026}
 }
 ```
+```bibtex
+@article{xu2026driftsespeechenhancementgenerative,
+  author  = {Xu, Liang and Caviedes-Nozal, Diego and Kleijn, W. Bastiaan and Yan, Longfei Felix and Olsson, Rasmus Kongsgaard},
+  title   = {Speech Enhancement Based on Drifting Models},
+  journal = {IEEE/ACM Transactions on Audio, Speech, and Language Processing},
+  year    = {2026},
+  note    = {Submitted},
+}
+```
 
 ---
 
