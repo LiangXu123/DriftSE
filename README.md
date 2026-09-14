@@ -204,12 +204,12 @@ Training uses **dynamic mixing**: 10,802 clean VoiceBank utterances are mixed on
 If you find DriftSE useful in your research, please cite:
 
 ```bibtex
-@inproceedings{xu2026driftse_taslp,
-  author    = {Liang Xu and Diego Caviedes-Nozal and W. Bastiaan Kleijn and Longfei Felix Yan and Rasmus Kongsgaard Olsson},
-  title     = {Speech Enhancement Based on Drifting Models},
+@article{xu2026driftsespeechenhancementgenerative,
+  author  = {Xu, Liang and Caviedes-Nozal, Diego and Kleijn, W. Bastiaan and Yan, Longfei Felix and Olsson, Rasmus Kongsgaard},
+  title   = {Speech Enhancement Based on Drifting Models},
   journal = {IEEE/ACM Transactions on Audio, Speech, and Language Processing},
-  year      = {2026},
-  note    = {Submitted},
+  year    = {2026},
+  note    = {Submitted},
 }
 ```
 
