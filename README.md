@@ -1,11 +1,10 @@
 # DriftSE: Speech Enhancement with Generative Drifting
 
-[![arXiv](https://img.shields.io/badge/%F0%9F%93%84%20arXiv-2604.24199-red.svg)](https://arxiv.org/abs/2604.24199)
-[![github](https://img.shields.io/badge/Code-GitHub-black?logo=github)](https://github.com/liangxu123/driftse)
+[![arXiv](https://img.shields.io/badge/%F0%9F%93%84%20arXiv-2609.12252-red.svg)](https://arxiv.org/abs/2609.12252)
+[![github](https://img.shields.io/badge/Code-GitHub-black?logo=github)](https://github.com/LiangXu123/DriftSE/tree/dual-latent-DriftSE)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Interspeech 2026](https://img.shields.io/badge/Interspeech%202026-Oral-blue.svg)]()
-
-> **Speech Enhancement Based on Drifting Models** (Interspeech 2026, Oral Presentation)
+---
+> **DriftSE: Speech Enhancement with Generative Drifting** (Submitted to IEEE/ACM TASLP for possible publication. )
 >
 > *Liang Xu, Diego Caviedes-Nozal, W. Bastiaan Kleijn, Longfei Felix Yan, Rasmus Kongsgaard Olsson*
 
