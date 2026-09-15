@@ -188,7 +188,7 @@ You can verify and test all feature encoders (WavLM, HuBERT, DistilHuBERT, BEATs
 python test_encoder.py --gpu 0
 ```
 
-> **Note on WavCube-pro Customization**: We added a custom `inf_new()` method to `WavLMVAEFeatures` (`latent_ckpt/WavCube/vocos/feature_extractors.py`). This allows directly passing GPU waveform tensors (bypassing CPU processor re-processing) to compute the projected 128-d joint semantic-acoustic latent representation $z$.
+> **Note on [WavCube-pro](https://huggingface.co/yhaha/WavCube/tree/main/WavCube-pro) Customization**: We added a custom `inf_new()` method to `WavLMVAEFeatures` (`latent_ckpt/WavCube/vocos/feature_extractors.py`). This allows directly passing GPU waveform tensors (bypassing CPU processor re-processing) to compute the projected 128-d joint semantic-acoustic latent representation $z$.
 
 ---
 
