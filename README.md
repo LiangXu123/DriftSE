@@ -4,7 +4,7 @@
 >
 > *Liang Xu, Diego Caviedes-Nozal, W. Bastiaan Kleijn, Longfei Felix Yan, Rasmus Kongsgaard Olsson*
 
-🔗 [**Project Website**](https://liangxu123.github.io/) &nbsp;|&nbsp; 📄 [**arXiv Paper**](https://arxiv.org/abs/2604.24199) &nbsp;|&nbsp; 🤗 [**Hugging Face Space**](https://huggingface.co/spaces/LIANGXU123/DriftSE)
+🔗 [**Project Website**](https://liangxu123.github.io/) &nbsp;|&nbsp; 📄 [**arXiv Paper**]([https://arxiv.org/abs/2604.24199](https://arxiv.org/abs/2609.12252)) &nbsp;|&nbsp; 🤗 [**Hugging Face Space**](https://huggingface.co/spaces/LIANGXU123/DriftSE)
 
 ---
 
