@@ -222,7 +222,3 @@ If you find DriftSE useful in your research, please cite:
 This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
 
 ---
-
-## 🙏 Acknowledgments
-
-We thank the authors of [SGMSE+](https://github.com/sp-uhh/sgmse) and [Drifting Models](https://github.com/tyfeld/drifting-model) for the foundational work that inspired this codebase.
