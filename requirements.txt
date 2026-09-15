@@ -1,6 +1,6 @@
 # ============================================================
 # DriftSE — Python dependencies
-# Tested with Python 3.11, CUDA 12.6
+# Tested with Python 3.11/3.12, CUDA 12.6
 # ============================================================
 
 # --- PyTorch (install the CUDA-appropriate wheel separately) ---
@@ -8,31 +8,38 @@
 torch>=2.3.0
 torchaudio>=2.3.0,<2.9
 pytorch-optimizer
-# --- HuggingFace Transformers (WavLM, HuBERT) ---
-transformers>=4.40.0
 
-# --- Audio I/O ---
+# --- Pretrained Feature Encoders ---
+transformers>=4.40.0        # WavLM, HuBERT, DistilHuBERT
+panns-inference>=0.1.1      # PANNs CNN14 feature extractor
+einops>=0.8.0               # WavCube / Vocos tensor operations
+
+# --- Audio I/O & Signal Processing ---
 soundfile>=0.12.1
 librosa>=0.10.2
+pyroomacoustics>=0.8.0      # RIR / Room acoustic simulation (speech_dataset.py)
 
 # --- Speech Quality Metrics ---
-pesq>=0.0.4               # PESQ (wideband)
-pystoi>=0.4.1             # STOI / ESTOI
-scoreq>=0.1.0             # SCOREQ (NR and REF modes)
+pesq>=0.0.4                 # PESQ (wideband & narrow-band)
+pystoi>=0.4.1               # STOI / ESTOI
+scoreq>=0.1.0               # SCOREQ (non-intrusive metric)
 
-# --- Differentiable Losses ---
-torch-pesq>=0.1.0         # Differentiable PESQ loss (driftse.py: PesqLoss)
-asteroid-filterbanks>=0.4.0  # SI-SDR / PIT loss (driftse.py: pairwise_neg_sisdr, PITLossWrapper)
+# --- Differentiable Losses & Model Profiling ---
+torch-pesq>=0.1.0           # Differentiable PESQ loss (train.py: PesqLoss)
+asteroid>=0.7.0             # SI-SDR & PIT losses (train.py: pairwise_neg_sisdr, PITLossWrapper)
+thop>=0.1.1                 # MACs / FLOPs profiling for backbones
 
-# --- Scientific Computing ---
+# --- Scientific Computing & Utilities ---
 numpy>=1.26.0
 scipy>=1.12.0
-
-# --- Data & Utilities ---
 pandas>=2.2.0
+pyyaml>=6.0
 tqdm>=4.66.0
-torchinfo>=1.8.0          # Model summary (driftse.py: summary)
+torchinfo>=1.8.0            # Model architectural summaries
+matplotlib>=3.7.0           # Plotting utilities
+protobuf>=5.26.0            # Protocol Buffers (W&B backend)
 
-# --- Experiment Tracking ---
+# --- Experiment Tracking & Model Downloads ---
 wandb>=0.17.0
 huggingface-hub>=0.20.0
+
