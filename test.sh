@@ -57,14 +57,18 @@ echo "========================================"
 for index in "${!CONFIGS[@]}"; do
     CONFIG=${CONFIGS[$index]}
     
-    # Read test_dir, clean_dir, and enhanced_dir from config JSON
-    CONFIG_INFO=$(python3 -c "
+    # Read test_dir, clean_dir, and enhanced_dir from config JSON safely using mapfile
+    mapfile -t CONFIG_INFO < <(python3 -c "
 import sys, json
 cfg = json.load(open(sys.argv[1]))
-print(f\"{cfg.get('test_dir', '')}\t{cfg.get('clean_dir', '')}\t{cfg.get('enhanced_dir', '')}\")
+print(cfg.get('test_dir') or '')
+print(cfg.get('clean_dir') or '')
+print(cfg.get('enhanced_dir') or '')
 " "$CONFIG")
 
-    IFS=$'\t' read -r CONFIG_TEST_DIR CONFIG_CLEAN_DIR ENHANCED_DIR <<< "$CONFIG_INFO"
+    CONFIG_TEST_DIR="${CONFIG_INFO[0]}"
+    CONFIG_CLEAN_DIR="${CONFIG_INFO[1]}"
+    ENHANCED_DIR="${CONFIG_INFO[2]}"
 
     # Dynamically resolve clean and noisy directories for this config
     get_dataset_paths "$CONFIG_TEST_DIR" "$CONFIG_CLEAN_DIR"
