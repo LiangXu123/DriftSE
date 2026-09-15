@@ -507,33 +507,13 @@ def train(
             elif "hubert" in model_type.lower():
                 model_path = "./latent_ckpt/hubert-large-local"
                 model_cls = HubertModel
-            elif "dewavlm" in model_type.lower():
-                model_path = os.environ.get("DEWAVLM_PATH", "./latent_ckpt/DeWavLM/DeWavLM-R.pt")
-                model_cls = None
             else:
                 model_path = "./latent_ckpt/wavlm-large-local"
                 model_cls = WavLMModel
 
             try:
                 print(f"Initializing Latent Model: {model_type} from {model_path}...")
-                if "dewavlm" in model_type.lower():
-                    try:
-                        from latent_ckpt.DeWavLM import DeWavLMModel
-                        wavlm_model = DeWavLMModel.from_pretrained(model_path, device=device)
-                    except Exception as native_err:
-                        print(f"Native DeWavLMModel failed: {native_err}, falling back to HF WavLMModel")
-                        wavlm_model = WavLMModel.from_pretrained("./latent_ckpt/wavlm-large-local")
-                        if os.path.exists(model_path) and os.path.getsize(model_path) > 0:
-                            cpt = torch.load(model_path, map_location="cpu")
-                            state_dict = cpt["state_dict"] if "state_dict" in cpt else (cpt["model"] if "model" in cpt else cpt)
-                            cleaned_dict = {}
-                            for k, v in state_dict.items():
-                                key = k.replace("model.", "").replace("wavlm.", "")
-                                cleaned_dict[key] = v
-                            wavlm_model.load_state_dict(cleaned_dict, strict=False)
-                else:
-                    wavlm_model = model_cls.from_pretrained(model_path)
-                
+                wavlm_model = model_cls.from_pretrained(model_path)
                 wavlm_model.to(device)
                 wavlm_model.eval()
                 # Freeze
