@@ -4,6 +4,7 @@
 [![github](https://img.shields.io/badge/Code-GitHub-black?logo=github)](https://github.com/LiangXu123/DriftSE/tree/dual-latent-DriftSE)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ---
+>
 > **DriftSE: Speech Enhancement with Generative Drifting** (Submitted to IEEE/ACM TASLP for possible publication. )
 >
 > *Liang Xu, Diego Caviedes-Nozal, W. Bastiaan Kleijn, Longfei Felix Yan, Rasmus Kongsgaard Olsson*
@@ -14,11 +15,11 @@
 
 ## ✨ Key Highlights
 
+- **Dual Latent Drifting** — Leverages dual-branch latent representations, combining speech semantic encoders (WavLM, HuBERT, DistilHuBERT) with acoustic encoders (BEATs and PANNs) and WavCube-pro for joint semantic-acoustic latents to provide rich, complementary training signals capturing phonetic, acoustic, and structural details.
+- **Unpaired Learning** — Natively supports training on fully unpaired noisy/clean speech data, enabling cross-dataset and cross-gender generalization without paired supervision.
 - **Novel Generative Paradigm** — Formulates speech enhancement as a distributional equilibrium problem, eliminating the need for iterative denoising or trajectory-based sampling.
 - **Native One-Step Inference** — Achieves single-step (1 NFE) enhancement by evolving the pushforward distribution of a mapping function to directly match the clean speech distribution via a Drifting Field.
-- **Semantic Latent Drifting** — Operates in a hierarchical self-supervised speech latent space (HuBERT, WavLM, DistilHuBERT), providing rich and stable training signals that capture both acoustic and phonetic structure.
-- **Unpaired Learning** — Natively supports training on fully unpaired noisy/clean speech data, enabling cross-dataset and cross-gender generalization without paired supervision.
-- **State-of-the-Art Generalization** — Achieves state-of-the-art WV-MOS and SCOREQ on the DNS Challenge 2020 blind test set, outperforming multi-step diffusion and consistency-based baselines.
+- **State-of-the-Art Generalization** — Achieves state-of-the-art performance on four test sets, outperforming multi-step diffusion and other baselines.
 
 ---
 
@@ -30,60 +31,70 @@ You can easily try out DriftSE without any local installation! Visit our **[Hugg
 
 ## 📦 Repository Contents
 
-The [Hugging Face repository](https://huggingface.co/LIANGXU123/DriftSE) hosts pre-trained checkpoints, SSL latent encoders, and enhanced audio outputs for **DriftSE**:
+The [Hugging Face repository](https://huggingface.co/LIANGXU123/DriftSE/tree/dual-latent-DriftSE) hosts pre-trained checkpoints, SSL latent encoders, and enhanced audio outputs for **DriftSE**:
 
 ```
 LIANGXU123/DriftSE/
 ├── logs/                                              # Pre-trained DriftSE checkpoints
-│   ├── distillhubert_three_layers_with_z/
-│   │   └── last.ckpt                                  # DriftSE (DistilHuBERT) — conditional generator
-│   ├── distillhubert_three_layers_pesq_sisdr_ccmse_with_z/
-│   │   └── last.ckpt                                  # DriftSE† (DistilHuBERT) — with auxiliary losses
-│   ├── hubert_three_layers_with_z/
-│   │   └── last.ckpt                                  # DriftSE (HuBERT) — conditional generator
-│   └── wavlm_three_layers_with_z/
-│       └── last.ckpt                                  # DriftSE (WavLM) — conditional generator
+│   ├── xxxx/
+│   │   └── last.ckpt                               
 ├── latent_ckpt/                                       # Frozen SSL speech encoders (for training/features)
 │   ├── distilhubert-local/                            # DistilHuBERT (768-d, 2 layers)
 │   ├── hubert-large-local/                            # HuBERT-Large (1024-d, 24 layers)
-│   └── wavlm-large-local/                             # WavLM-Large (1024-d, 24 layers)
-└── out.zip                                            # Pre-computed enhanced audio outputs (VB-DMD test set)
+│   ├── wavlm-large-local/                             # WavLM-Large (1024-d, 24 layers)
+│   ├── beats-local/                                   # BEATs (768-d, 12 layers)
+│   ├── panns-local/                                   # PANNs CNN14 (1024-d / 2048-d)
+│   ├── WavCube/                                       # WavCube-pro (128-d, joint semantic-acoustic)
+└── out.zip                                            # Pre-computed enhanced audio outputs
 ```
 
 ---
 
 ## 📊 Performance Benchmark
 
-### VoiceBank-DEMAND (VB-DMD) — In-Domain Evaluation
+### EARS-WHAM — Speech Denoising
 
-| Method | NFE | PESQ (↑) | SI-SDR (↑) | ESTOI (↑) | DNSMOS (↑) | SCOREQ (↑) |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| MetricGAN+ | 1 | 3.13 | 8.50 | 0.83 | 3.22 | 3.82 |
-| UNIVERSE++ | 8 | 2.91 | 18.00 | 0.85 | 3.45 | **4.35** |
-| SGMSE+ | 30 | 2.90 | 16.90 | 0.85 | 3.48 | 3.98 |
-| ROSE-CD | 1 | 3.49 | 17.80 | 0.87 | 3.49 | 4.23 |
-| SBCTM | 1 | **3.56** | 12.70 | 0.87 | 3.55 | **4.35** |
-| MeanFlowSE | 1 | 2.81 | **19.97** | **0.88** | **3.58** | 4.25 |
-| *DriftSE (WavLM)* | 1 | 3.03 | 14.00 | 0.85 | **3.54** | **4.17** |
-| *DriftSE (HuBERT)* | 1 | 2.94 | 12.50 | 0.84 | 3.49 | 4.14 |
-| *DriftSE (DistilHuBERT)* | 1 | 3.00 | 15.60 | 0.85 | 3.48 | 4.15 |
-| ***DriftSE† (DistilHuBERT)*** | **1** | **3.45** | **20.60** | **0.87** | 3.49 | 4.11 |
+| Model | Causal | Latent | Params | GMACs | WER (↓) | PESQ (↑) | SI-SDR (↑) | ESTOI (↑) | DiMOS (↑) | WVMOS (↑) | NISQA (↑) | SCOREQ (↑) |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| *Noisy* | - | - | - | - | 32.80% | 1.24 | 5.4 | 0.64 | 2.58 | 1.20 | 1.95 | 2.13 |
+| **Non-Causal** | | | | | | | | | | | | |
+| SGMSE+ | ❌ | - | 65M | 132.89×60 | 18.65% | 2.20 | 14.2 | 0.84 | 3.93 | **2.86** | 3.66 | 3.48 |
+| ROSE-CD | ❌ | - | 59.62M | 132.88×1 | **18.19%** | **2.81** | 15.3 | 0.85 | 3.92 | 2.60 | 3.61 | **3.50** |
+| DM-IERM | ❌ | - | 67M | 129.7×31 | - | 2.67 | **17.4** | 0.74 | - | - | - | - |
+| FM-Euler4 | ❌ | - | 73.7M | 107.18×5 | 18.40% | 2.41 | 16.1 | **0.86** | **4.34** | 2.82 | **4.50** | - |
+| *DriftSE (NCSN++)* | ❌ | PANNs | 59.62M | 132.88×1 | 24.34% | 2.09 | 0.8 | 0.79 | 3.23 | 2.34 | 3.12 | 2.72 |
+| *DriftSE (NCSN++)* | ❌ | DistilHuBERT | 59.62M | 132.88×1 | 15.19% | 2.39 | 12.1 | 0.84 | 4.22 | 3.07 | **4.07** | 3.82 |
+| *DriftSE (NCSN++)* | ❌ | DistilHuBERT+PANNs | 59.62M | 132.88×1 | **14.33%** | 2.46 | **13.5** | **0.85** | 4.11 | **3.13** | 3.96 | **3.85** |
+| *DriftSE (NCSN++)* | ❌ | WavCube | 59.62M | 132.88×1 | 15.35% | 2.42 | 12.0 | 0.84 | **4.25** | 3.07 | 4.05 | **3.85** |
+| *DriftSE (TF-GridNet)* | ❌ | WavCube | 1.69M | 58.88×1 | 15.48% | **2.48** | 11.2 | 0.84 | 4.11 | 3.05 | 3.92 | **3.85** |
+| **Causal** | | | | | | | | | | | | |
+| SFM-LRK4 | ✔️ | - | 52.5M | 144.11×5 | 20.10% | 2.30 | 14.1 | 0.83 | 3.70 | 2.79 | 4.04 | - |
+| *DriftSE (SFMUnet)* | ✔️ | PANNs | 24.6M | 144.07×1 | 27.15% | 1.82 | -41.6 | 0.10 | 3.39 | 2.34 | 3.11 | 2.58 |
+| *DriftSE (SFMUnet)* | ✔️ | DistilHuBERT | 24.6M | 144.07×1 | 19.21% | 2.05 | **-31.5** | 0.51 | **4.08** | **3.05** | 3.70 | 3.33 |
+| *DriftSE (SFMUnet)* | ✔️ | DistilHuBERT+PANNs | 24.6M | 144.07×1 | 18.67% | 2.13 | -31.6 | 0.52 | 4.04 | 3.03 | 3.77 | 3.30 |
+| *DriftSE (SFMUnet)* | ✔️ | WavCube | 24.6M | 144.07×1 | 18.94% | 2.21 | -33.9 | 0.51 | 3.71 | 3.00 | 3.80 | 3.35 |
+| *DriftSE (TF-GridNet)* | ✔️ | WavCube | 1.24M | 41.43×1 | **18.11%** | **2.26** | -33.8 | **0.53** | 3.80 | 3.01 | **3.92** | **3.47** |
 
-> † Jointly trained with auxiliary PESQ, SI-SDR, and CCMSE losses.
+### EARS-REVERB — Speech Dereverberation
 
-### DNS Challenge 2020 Blind Test Set — Real-World Generalization
-
-| Method | NFE | WV-MOS (↑) | SCOREQ (↑) | SIG (↑) | BAK (↑) | OVRL (↑) |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| MetricGAN+ | 1 | 1.23 | 2.08 | 3.28 | 3.45 | 2.70 |
-| UNIVERSE++ | 8 | 1.99 | 2.27 | 3.45 | 3.52 | 2.93 |
-| SGMSE+ | 30 | 2.34 | **2.95** | **4.12** | **3.94** | **3.62** |
-| ROSE-CD | 1 | **2.37** | 2.81 | 4.01 | 3.80 | 3.42 |
-| SBCTM | 1 | 2.24 | 2.78 | 3.83 | 3.88 | 3.33 |
-| MeanFlowSE | 1 | 2.20 | 2.79 | 3.88 | 3.51 | 3.21 |
-| *DriftSE (WavLM)* | 1 | 2.62 | 2.67 | 3.85 | **3.94** | **3.42** |
-| *DriftSE (HuBERT)* | 1 | 2.56 | 2.74 | **3.92** | 3.79 | 3.40 |
-| ***DriftSE (DistilHuBERT)†*** | **1** | **2.65** | **2.97** | 3.78 | 3.84 | 3.31 |
+| Model | Causal | Latent | Params | GMACs | WER (↓) | PESQ (↑) | SI-SDR (↑) | ESTOI (↑) | DiMOS (↑) | WVMOS (↑) | NISQA (↑) | SCOREQ (↑) |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| *Reverberant* | - | - | - | - | 20.10% | 1.32 | -16.6 | 0.58 | 3.02 | 2.02 | 2.11 | 3.12 |
+| **Non-Causal** | | | | | | | | | | | | |
+| SGMSE+ | ❌ | - | 65.59M | 132.89×60 | 17.32% | 1.95 | -12.6 | 0.76 | 3.48 | 2.16 | **3.58** | **2.69** |
+| ROSE-CD | ❌ | - | 59.62M | 132.88×1 | 15.78% | 2.69 | -13.9 | 0.82 | 3.75 | **2.70** | 3.14 | 2.66 |
+| DM-IERM | ❌ | - | 67M | 129.7×31 | - | **3.52** | **14.2** | **0.92** | - | - | - | - |
+| FM-Euler5 | ❌ | - | 38.7M | 107.18×5 | **11.40%** | 2.31 | -11.7 | 0.85 | **3.77** | 2.43 | 3.47 | - |
+| *DriftSE (NCSN++)* | ❌ | WavLM+PANNs | 59.62M | 132.88×1 | **8.91%** | 2.35 | -9.3 | 0.83 | **4.13** | **3.04** | 3.89 | **3.61** |
+| *DriftSE (NCSN++)* | ❌ | WavCube | 59.62M | 132.88×1 | 10.28% | 2.33 | -10.5 | 0.82 | 4.04 | 2.72 | **4.11** | 3.30 |
+| *DriftSE (TF-GridNet)* | ❌ | WavLM+PANNs | 1.69M | 58.88×1 | 15.59% | 2.07 | -8.2 | 0.78 | 3.52 | 2.45 | 3.04 | 3.34 |
+| *DriftSE (TF-GridNet)* | ❌ | WavCube | 1.69M | 58.88×1 | 9.93% | **2.43** | **-6.8** | **0.84** | 3.92 | 2.69 | 3.92 | 3.17 |
+| **Causal** | | | | | | | | | | | | |
+| SFM-LRK5 | ✔️ | - | 27.9M | 144.11×5 | 15.90% | 2.05 | -13.5 | 0.79 | 3.68 | 2.48 | 3.67 | - |
+| *DriftSE (SFMUnet)* | ✔️ | WavLM+PANNs | 24.6M | 144.07×1 | 10.97% | 2.11 | **-33.3** | **0.58** | 3.93 | 2.84 | 3.56 | 3.28 |
+| *DriftSE (SFMUnet)* | ✔️ | WavCube | 24.6M | 144.07×1 | 11.17% | 2.32 | -34.3 | 0.54 | 4.09 | 2.79 | 4.03 | 3.30 |
+| *DriftSE (TF-GridNet)* | ✔️ | WavLM+PANNs | 1.24M | 41.43×1 | 9.00% | 2.33 | -33.8 | 0.56 | 3.93 | 2.80 | 3.48 | 3.33 |
+| *DriftSE (TF-GridNet)* | ✔️ | WavCube | 1.24M | 41.43×1 | **8.85%** | **2.71** | -34.5 | 0.56 | **4.16** | **2.96** | **4.07** | **3.58** |
 
 ---
 
@@ -94,6 +105,7 @@ LIANGXU123/DriftSE/
 ```bash
 git clone https://github.com/liangxu123/driftse.git
 cd driftse
+git checkout dual-latent-DriftSE
 pip install -r requirements.txt
 ```
 
@@ -121,63 +133,14 @@ snapshot_download("LIANGXU123/DriftSE", revision="dual-latent-DriftSE", local_di
 ```bash
 bash ./test.sh <GPU_ID> [CONFIG_PATH]
 
-# Example: default config (DistilHuBERT, conditional generator)
-bash ./test.sh 0
-
 # Example: specific config
-bash ./test.sh 0 ./config/with_z/v2_drift2_distillhubert_three_layers.json
+bash ./test.sh 0 ./config/DriftSE/experiments/SE_EARS_distilhubert_ch1282_incond_PANNs.json
 ```
 
 The evaluation pipeline runs two phases:
+
 1. **Enhancement** — generates enhanced audio via `enhancement.py`
 2. **Objective Metrics** — computes PESQ, ESTOI, SI-SDR via `calc_metrics.py`
-
----
-
-## 🏗️ Model Architecture
-
-| Component | Details |
-|---|---|
-| **Backbone** | NCSN++V2 (without time embedding) |
-| **Input** | Complex STFT spectrogram (510-pt Hann window, hop 128) |
-| **Audio** | 16 kHz mono |
-| **SSL Encoder** | Frozen DistilHuBERT / HuBERT-Large / WavLM-Large |
-| **Drifting Kernel** | Multi-temperature exponential kernel (τ ∈ {0.1, 0.5, 1.0}) |
-| **Inference** | Single-step (1 NFE) — no iterative denoising |
-| **Optimizer** | SOAP / AdamW, lr = 5×10⁻⁴, weight decay = 0.01 |
-| **Training** | 100 epochs, batch size 14 × 4 gradient accumulation |
-
-### Two Formulations
-
-- **Conditional Generator (`with_z/`)** — Stochastic mapping `f_θ(ε, y)` from Gaussian noise conditioned on noisy speech, optimized for perceptual quality (DNSMOS, SCOREQ).
-- **Direct Mapping (`no_z/`)** — Deterministic mapping `f_θ(y)` from noisy to clean speech, with `σ=0` for highest PESQ/SI-SDR fidelity.
-
----
-
-## 🤗 SSL Encoder Checkpoints
-
-DriftSE uses frozen self-supervised speech encoders to compute the latent drifting field during training (already included if you downloaded the repository via step 2; **not** needed for inference).
-
-To download only the latent SSL encoders:
-
-```bash
-huggingface-cli download LIANGXU123/DriftSE --include "latent_ckpt/*" --local-dir .
-```
-
-Or via Python:
-
-```python
-from huggingface_hub import snapshot_download
-
-snapshot_download("LIANGXU123/DriftSE", allow_patterns=["latent_ckpt/*"], local_dir=".")
-```
-
-```
-latent_ckpt/
-├── wavlm-large-local/       # WavLM-Large (1024-d, 24 layers)
-├── hubert-large-local/      # HuBERT-Large (1024-d, 24 layers)
-└── distilhubert-local/      # DistilHuBERT (768-d, 2 layers)
-```
 
 ---
 
@@ -188,19 +151,52 @@ To train DriftSE from scratch:
 ```bash
 bash ./train.sh <GPU_ID> [CONFIG_PATH]
 
-# Example: default DistilHuBERT config
-bash ./train.sh 0
+# Example: specific config
+bash ./train.sh 0 ./config/DriftSE/experiments/SE_EARS_distilhubert_ch1282_incond_PANNs.json
+```
+---
 
-# Example: with auxiliary losses (PESQ + SI-SDR + CCMSE)
-bash ./train.sh 0 ./config/with_z/v2_drift2_distillhubert_three_layers_pesq_sisdr_ccmse.json
+## 🤗 SSL & Latent Encoder Checkpoints
+
+DriftSE uses frozen self-supervised speech encoders and auxiliary feature extractors to compute the latent drifting field during training (already included if you downloaded the repository via step 2; **not** needed for inference).
+
+To download only the latent encoders:
+
+```bash
+huggingface-cli download LIANGXU123/DriftSE --revision dual-latent-DriftSE --include "latent_ckpt/*" --local-dir .
 ```
 
-Training uses **dynamic mixing**: 10,802 clean VoiceBank utterances are mixed on-the-fly with 18 DEMAND noise types at SNRs sampled from {0, 5, 10, 15} dB.
+Or via Python:
+
+```python
+from huggingface_hub import snapshot_download
+
+snapshot_download("LIANGXU123/DriftSE", revision="dual-latent-DriftSE", allow_patterns=["latent_ckpt/*"], local_dir=".")
+```
+
+```
+latent_ckpt/
+├── distilhubert-local/                            # DistilHuBERT (768-d, 2 layers)
+├── hubert-large-local/                            # HuBERT-Large (1024-d, 24 layers)
+├── wavlm-large-local/                             # WavLM-Large (1024-d, 24 layers)
+├── beats-local/                                   # BEATs (768-d, 12 layers)
+├── panns-local/                                   # PANNs CNN14 (1024-d / 2048-d)
+├── WavCube/                                       # WavCube-pro (128-d, joint semantic-acoustic)
+```
+
+### Verification & Testing
+
+You can verify and test all feature encoders (WavLM, HuBERT, DistilHuBERT, BEATs, PANNs CNN14, WavCube-pro) to ensure their checkpoints load properly and inspect output tensor shapes:
+
+```bash
+python test_encoder.py --gpu 0
+```
+
+> **Note on WavCube-pro Customization**: We added a custom `inf_new()` method to `WavLMVAEFeatures` (`latent_ckpt/WavCube/vocos/feature_extractors.py`). This allows directly passing GPU waveform tensors (bypassing CPU processor re-processing) to compute the projected 128-d joint semantic-acoustic latent representation $z$.
 
 ---
 
 ## 📝 Citation
-
 
 If you find DriftSE useful in your research, please cite:
 
@@ -212,6 +208,7 @@ If you find DriftSE useful in your research, please cite:
   year      = {2026}
 }
 ```
+
 ```bibtex
 @article{xu2026driftsespeechenhancementgenerative,
   author  = {Xu, Liang and Caviedes-Nozal, Diego and Kleijn, W. Bastiaan and Yan, Longfei Felix and Olsson, Rasmus Kongsgaard},
@@ -221,7 +218,6 @@ If you find DriftSE useful in your research, please cite:
   note    = {Submitted},
 }
 ```
-
 
 ---
 
