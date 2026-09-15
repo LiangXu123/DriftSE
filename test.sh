@@ -56,15 +56,27 @@ echo "========================================"
 
 for index in "${!CONFIGS[@]}"; do
     CONFIG=${CONFIGS[$index]}
-    ENHANCED_DIR=$(python -c "import sys, json; print(json.load(open(sys.argv[1]))['enhanced_dir'])" "$CONFIG")
+    
+    # Read test_dir, clean_dir, and enhanced_dir from config JSON
+    CONFIG_INFO=$(python3 -c "
+import sys, json
+cfg = json.load(open(sys.argv[1]))
+print(f\"{cfg.get('test_dir', '')}\t{cfg.get('clean_dir', '')}\t{cfg.get('enhanced_dir', '')}\")
+" "$CONFIG")
+
+    IFS=$'\t' read -r CONFIG_TEST_DIR CONFIG_CLEAN_DIR ENHANCED_DIR <<< "$CONFIG_INFO"
+
+    # Dynamically resolve clean and noisy directories for this config
+    get_dataset_paths "$CONFIG_TEST_DIR" "$CONFIG_CLEAN_DIR"
 
     echo ""
     echo "--- Metrics: $ENHANCED_DIR ---"
-    echo "Clean directory   : $CLEAN_DIR_VOICEBANK"
-    echo "Noisy directory   : $NOISY_DIR_VOICEBANK"
+    echo "Config            : $CONFIG"
+    echo "Clean directory   : $CLEAN_DIR"
+    echo "Noisy directory   : $NOISY_DIR"
     echo "Enhanced directory: $ENHANCED_DIR"
 
-    CMD="python3 util/calc_metrics.py --clean_dir \"$CLEAN_DIR_VOICEBANK\" --noisy_dir \"$NOISY_DIR_VOICEBANK\" --enhanced_dir \"$ENHANCED_DIR\""
+    CMD="python3 util/calc_metrics.py --clean_dir \"$CLEAN_DIR\" --noisy_dir \"$NOISY_DIR\" --enhanced_dir \"$ENHANCED_DIR\""
     echo "Executing command: $CMD"
     if ! eval $CMD; then
         echo "Metrics calculation failed for $ENHANCED_DIR"
