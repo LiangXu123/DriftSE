@@ -1,0 +1,26 @@
+{
+    "model": "streamunet",
+    "nf": 128,
+    "ch_mult": [
+        1,
+        2,
+        2,
+        2
+    ],
+    "num_res_blocks": 1,
+    "input_channels": 4,
+    "output_channels": 2,
+    "input_freqs": 256,
+    "dropout": 0.0,
+    "norm_type": "subband_grouped_batchnorm",
+    "no_freq_groups_below": 16,
+    "freq_groups": 4,
+    "down_dilation": 2,
+    "image_size": 256,
+    "n_fft": 510,
+    "hop_length": 256,
+    "window_type": "hann",
+    "center": true,
+    "spec_factor": 0.15,
+    "spec_abs_exponent": 0.5
+}

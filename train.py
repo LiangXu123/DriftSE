@@ -7,25 +7,25 @@ Implements Coupled Normalization to fix magnitude learning issues.
 
 import argparse
 import os
+
 import sys
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 import numpy as np
 import torch
-import pytorch_optimizer as optim 
 import torch.nn as nn
+import pytorch_optimizer as optim 
 import torch.nn.functional as FF
 from torch.utils.data import DataLoader
 from torchinfo import summary
-# Add parent directory to path to import sgmse modules
-# current_dir = os.path.dirname(os.path.abspath(__file__))
-# parent_dir = os.path.dirname(current_dir)
-# sys.path.append(parent_dir)
+from transformers import WavLMModel, HubertModel
+from backbones.ncsnpp_v2_drift_input_condition import ncsnpp_v2_drift_input_condition
+from backbones.tfgridnet import TFGridNet_Backbone
+from backbones.TFGridNet_Causal import TFGridNet_Causal
+from backbones.streaming_unet import CausalNCSNpp
+from util.drifting import compute_V, compute_V_paired
 
-from backbones.ncsnpp_v2 import NCSNpp_v2
-from backbones.ncsnpp_v2_drift import ncsnpp_v2_drift
-from util.drifting import compute_V, normalize_features, normalize_drift
 from torch_pesq import PesqLoss
 from asteroid.losses import pairwise_neg_sisdr, PITLossWrapper
 from util.utils import (
@@ -37,147 +37,38 @@ from util.utils import (
     set_seed,
 )
 from util.speech_dataset import SpeechDataset
+import sys
+
+# 1. Force Python's package system to pretend protobuf version is 5.29.6
+try:
+    import google.protobuf
+    # Override the version attributes before wandb reads them
+    google.protobuf.__version__ = "5.29.6"
+    sys.modules['google.protobuf'].__version__ = "5.29.6"
+except ImportError:
+    pass
+
+# 2. Now import wandb (it will see "5.29.6" and bypass the check)
 import wandb
 from tqdm import tqdm
 import json
 from scipy.stats import truncnorm
-from transformers import WavLMModel, HubertModel
-def load_config(config_path):
-    with open(config_path, 'r') as f:
-        return json.load(f)
+from util.config_loader import load_config
 
-def get_window(window_type, window_length):
-    if window_type == 'sqrthann':
-        return torch.sqrt(torch.hann_window(window_length, periodic=True))
-    elif window_type == 'hann':
-        return torch.hann_window(window_length, periodic=True)
-    else:
-        raise NotImplementedError(
-            f"Window type {window_type} not implemented!")
-
-def to_audio(spec, config):
-    """
-    Reverse the spectrogram transformation and ISTFT.
-    spec: (B, F, T) complex tensor
-    """
-    # 1. Reverse Spec Transform
-    # spec = spec.abs()**0.5 * exp(j * angle) * 0.15
-    # So: spec / 0.15 = abs**0.5 * exp(j * angle)
-    # abs_orig = (abs / 0.15)**2
-    
-    spec_factor = config["spec_factor"]
-    
-    mag = spec.abs()
-    phase = spec.angle()
-    
-    mag_orig = (mag / spec_factor) ** 2
-    spec_orig = mag_orig * torch.exp(1j * phase)
-    
-    # 2. ISTFT
-    # Matching SpeechDataset defaults: n_fft=510, hop_length=128, window=hann
-    n_fft = config["n_fft"]
-    hop_length = config["hop_length"]
-    window = get_window(config["window_type"], n_fft).to(spec.device)
-    
-    # istft requires (B, F, T) complex
-    # train_step gives (B, F, T) complex directly if we use x_gen_complex
-    
-    wav = torch.istft(
-        spec_orig,
-        n_fft=n_fft,
-        hop_length=hop_length,
-        window=window,
-        center=True,
-    )
-    return wav
-
-def compute_ccmse_loss(gen_wav, clean_wav, fft_sizes=(512, 1024, 2048), eps=1e-8):
-    """
-    MultiResolution Complex Compressed MSE (CCMSE) loss.
-
-    Computes a normalised complex-valued MSE between generated and clean waveforms
-    simultaneously across multiple STFT resolutions, then averages:
-
-        L_CCMSE = (1 / |R|) * sum_r  ||STFT_r(gen) - STFT_r(clean)||_F^2
-                                       ─────────────────────────────────────
-                                          ||STFT_r(clean)||_F^2  +  eps
-
-    Args:
-        gen_wav   : (B, T) generated waveform  — original amplitude domain
-        clean_wav : (B, T) clean reference     — original amplitude domain
-        fft_sizes : iterable of FFT sizes to use (default: 512, 1024, 2048)
-        eps       : stability constant for the denominator
-
-    Returns:
-        Scalar loss tensor.
-    """
-    total = 0.0
-    device = gen_wav.device
-
-    for n_fft in fft_sizes:
-        hop = n_fft // 4
-        win = torch.hann_window(n_fft, periodic=True).to(device)
-
-        # STFT: returns (B, F, T_frames) complex
-        S_gen   = torch.stft(gen_wav,   n_fft=n_fft, hop_length=hop,
-                             window=win, center=True, return_complex=True)
-        S_clean = torch.stft(clean_wav, n_fft=n_fft, hop_length=hop,
-                             window=win, center=True, return_complex=True)
-
-        # Frobenius norm squared over (F, T_frames) per sample, then mean over batch
-        diff_sq   = (S_gen - S_clean).abs().pow(2).sum(dim=(-2, -1)).mean()   # scalar
-        denom     = S_clean.abs().pow(2).sum(dim=(-2, -1)).mean() + eps        # scalar
-
-        total = total + diff_sq / denom
-
-    return total / len(fft_sizes)
-
-def get_noise_schedule(config, batch_size, device):
-
-    """
-    Returns the noise (sigma) based on the schedule.
-    """
-    mean = config.get('mean', -3.0)
-    std = config.get('std', 1.2)
-    sigma_max = config.get('sigma_max', 0.35)
-    sigma_min = 0.01
-    noise_schedule = config.get('noise_schedule', 'log').lower()
-
-    if noise_schedule == 'log':
-        # Log-Normal (Proposed)
-        # Biases sampling toward smaller sigmas while still occasionally hitting large ones.
-        # log_sigma = torch.randn(batch_size, device=device) * std + mean
-        # t_noise = torch.exp(log_sigma)
-        
-        # 1. Calculate bounds in Z-score space (Standard Normal)
-        # We want log_sigma in [ln(sigma_min), ln(sigma_max)]
-        a = (np.log(sigma_min) - mean) / std
-        b = (np.log(sigma_max) - mean) / std
-        
-        # 2. Sample from Truncated Normal on CPU
-        # This guarantees the distribution shape is preserved without a hard clip spike.
-        log_sigma = truncnorm.rvs(a, b, loc=mean, scale=std, size=batch_size)
-        
-        log_sigma_tensor = torch.from_numpy(log_sigma).float().to(device)
-        t_noise = torch.exp(log_sigma_tensor)
-        
-    elif noise_schedule == 'cosine':
-        # Cosine (Ablation A)
-        u = torch.rand(batch_size, device=device)
-        s = 0.008
-        t_noise = (torch.cos(((u + s) / (1 + s)) * np.pi / 2)) ** 2 * sigma_max
-    elif noise_schedule == 'linear': # 'linear' 
-        # Linear (Ablation B)
-        t_noise = torch.rand(batch_size, device=device) * sigma_max
-    else:
-        raise ValueError(f"Unknown noise schedule: {noise_schedule}")
-
-    # Clamp to avoid extreme values
-    t_noise = t_noise.clamp(min=1e-5, max=sigma_max)
-    return t_noise
+from util.latent_drifting import (
+    get_window,
+    to_audio,
+    compute_ccmse_loss,
+    get_noise_schedule,
+    compute_latent_drift_loss,
+    load_aux_encoder,
+    compute_aux_encoder_drift_loss,
+    _aux_extract_features
+)
 
 
 def train_step(
+
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
     batch: tuple,
@@ -187,6 +78,13 @@ def train_step(
     pesq_loss_fn: Optional[nn.Module] = None,
     sisdr_loss_fn: Optional[nn.Module] = None,
     wavlm_model: Optional[nn.Module] = None,
+    latent_memory_banks: Optional[dict] = None,
+    manifolds_dict: Optional[dict] = None,
+    mcd_codebooks: Optional[dict] = None,
+    global_step: int = 0,
+    norm_input_audio: bool = True,
+    aux_encoder_model: Optional[nn.Module] = None,
+    aux_encoder_cfg: Optional[dict] = None,
 ) -> dict:
     """
     Single training step for Speech Enhancement Drifting (NCSN++).
@@ -195,246 +93,175 @@ def train_step(
     
     # Unpack batch: Clean (X Target), Noisy (Y Condition)
     # Shapes: (B, 2, F, T) Real Tensor
-    clean_speech, noisy_speech, clean_audio_wav, normfac = batch
-    clean_speech = clean_speech.to(device)
+    clean_speech, noisy_speech, clean_audio_wav, noisy_audio_wav, normfac = batch
+    # clean_speech = clean_speech.to(device)
     noisy_speech = noisy_speech.to(device)
     clean_audio_wav = clean_audio_wav.to(device)
+    noisy_audio_wav = noisy_audio_wav.to(device)
     normfac = normfac.to(device)  # (B,) scalar per sample
 
-    batch_size = clean_speech.shape[0]
+    batch_size = noisy_speech.shape[0]
 
     # 1. Prepare Inputs for NCSN++ (Complex Tensors)
     # (B, 2, F, T) Real -> Permute -> (B, F, T, 2) -> Complex (B, F, T) -> Unsqueeze -> (B, 1, F, T)
-    x_pos_complex = torch.view_as_complex(clean_speech.permute(0, 2, 3, 1).contiguous()).unsqueeze(1)
+    # x_pos_complex = torch.view_as_complex(clean_speech.permute(0, 2, 3, 1).contiguous()).unsqueeze(1)
     y_cond_complex = torch.view_as_complex(noisy_speech.permute(0, 2, 3, 1).contiguous()).unsqueeze(1)
 
-    # Sample Output Noise z ~ N(0, I) (Complex Standard Normal)
-    # 
-    
-    # Time Embedding t (Fixed at 1.0 for One-Step Drifting, based on ouve/sub-vp logic)
     # NCSN++ usually expects t in [0, 1] or continuous.
-    # t = torch.ones(batch_size, device=device)
 
     # 2. Generate Samples (Predict Clean Speech)
     # NCSN++ Forward: (z, cond, t) -> x_gen_complex
     # Output shape: (B, 1, F, T) Complex
     # x_gen_complex = model(z_complex, y_cond_complex, t)
     train_add_gaussian = config.get('train_add_gaussian', False)
+    use_strict_gaussian = config.get('use_strict_gaussian', False)
+    # Either flag enables the two-input (x, y, t) forward signature
+    use_cond_fwd = (
+        config.get('use_conditional_backbone', False)
+        or 'input_condition' in config['model'].lower()
+        or config['model'].lower() == 'streamunet'
+    )
     if str(train_add_gaussian).lower() == 'true':
         # Noise Schedule
-        # print('train_add_gaussian:',train_add_gaussian)
-        z_complex = torch.randn_like(x_pos_complex)
+        z_complex = torch.randn_like(y_cond_complex)
         t_noise = get_noise_schedule(config, batch_size, device)
         sigma_broadcast = t_noise.view(batch_size, 1, 1, 1)
-        noisy_input = y_cond_complex + (sigma_broadcast * z_complex)        
-        x_gen_complex = model(noisy_input, torch.ones(batch_size, device=device))
+        noisy_input = y_cond_complex + (sigma_broadcast * z_complex)
+        if use_cond_fwd:
+            # input_condition models forward(x, y, t): noise input + conditioner
+            if use_strict_gaussian:
+                x_gen_complex = model(sigma_broadcast * z_complex, y_cond_complex, torch.ones(batch_size, device=device), use_strict_gaussian=use_strict_gaussian)
+            else:
+                x_gen_complex = model(sigma_broadcast * z_complex, y_cond_complex, torch.ones(batch_size, device=device))
+        else:
+            x_gen_complex = model(noisy_input, torch.ones(batch_size, device=device))
     else:
-        # print('train_add_gaussian:11111',train_add_gaussian)
-        x_gen_complex = model(y_cond_complex, torch.ones(batch_size, device=device))
+        if use_cond_fwd:
+            if use_strict_gaussian:
+                x_gen_complex = model(y_cond_complex, y_cond_complex, torch.ones(batch_size, device=device), use_strict_gaussian=use_strict_gaussian)
+            else:
+                x_gen_complex = model(y_cond_complex, y_cond_complex, torch.ones(batch_size, device=device))
+        else:
+            x_gen_complex = model(y_cond_complex, torch.ones(batch_size, device=device))
+        
     # Convert back to Real representation for Loss Calculation (Flattened)
     # (B, 1, F, T) Complex -> (B, F, T) -> (B, F, T, 2)
     x_gen_real = torch.view_as_real(x_gen_complex.squeeze(1)) # (B, F, T, 2)
-    clean_speech_flat = torch.view_as_real(x_pos_complex.squeeze(1)) # (B, F, T, 2)
+    # clean_speech_flat = torch.view_as_real(x_pos_complex.squeeze(1)) # (B, F, T, 2)
 
-    # Initialize loss
+    # Initialize loss as building block for other losses
     loss = 0.0
-    # --- Add PESQ / SISDR Loss ---
-    pesq_loss_val = 0.0
-    sisdr_loss_val = 0.0
+
+    # NaN Checks for base tensor
+    if torch.isnan(x_gen_real).any():
+        print("[ERROR] x_gen_real contains NaNs!")
+
+    # --- Add MSE Loss on output spectrum ---
+    mse_weight = config.get("MSE_weight", 0.0)
+    mse_loss_val = 0.0
+    if mse_weight > 0:
+        x_pos_real = clean_speech.to(device).permute(0, 2, 3, 1).contiguous()
+        mse_raw = torch.nn.functional.mse_loss(x_gen_real, x_pos_real)
+        mse_loss_val = mse_weight * mse_raw
+        loss += mse_loss_val
 
     # --- Add PESQ / SISDR / Latent Drift / CCMSE Loss ---
     pesq_loss_val = 0.0
     sisdr_loss_val = 0.0
     latent_drift_loss_val = 0.0
+    aux_drift_loss_val = 0.0
     ccmse_loss_val = 0.0
     
     latent_drift_weight = config.get("latent_drift_weight", 0.0)
     ccmse_weight = config.get("ccmse_weight", 0.0)
 
-    if config["pesq_weight"] > 0 or config["sisdr_weight"] > 0 or latent_drift_weight > 0 or ccmse_weight > 0:
+    # Determine if auxiliary encoder or auxiliary FD requires audio reconstruction
+    aux_drift_weight = 0.0
+    if aux_encoder_cfg is not None:
+        aux_drift_weight = aux_encoder_cfg.get("latent_drift_weight", 0.0)
+
+    if (config.get("pesq_weight", 0) > 0 or 
+        config.get("sisdr_weight", 0) > 0 or 
+        latent_drift_weight > 0 or 
+        ccmse_weight > 0 or 
+        aux_drift_weight > 0):
         # Reconstruct Audio
         # x_gen_complex: (B, 1, F, T) -> (B, F, T)
         gen_audio = to_audio(x_gen_complex.squeeze(1), config)
         
         # Rescale gen_audio from normalized domain back to original amplitude.
         # to_audio inverts the spec_transform but NOT the waveform normfac
-        # that was applied in the dataset. Multiply by normfac to align scales.
         # normfac: (B,) -> broadcast to (B, T)
         gen_audio = gen_audio * normfac.unsqueeze(1)
-        
-        # Clean Audio (already in original amplitude — raw waveform before /normfac)
-        clean_audio = clean_audio_wav
-
         # ====================================================================
         # Renormalize to match input's maximum magnitude
         # ====================================================================
-        # We process each sample in the batch individually
-        # gen_audio: (B, T)
-        # clean_audio: (B, T)
 
-        
         # PESQ
         if config["pesq_weight"] > 0 and pesq_loss_fn is not None:
-             p_loss = pesq_loss_fn(clean_audio, gen_audio)
+             p_loss = pesq_loss_fn(clean_audio_wav, gen_audio)
              pesq_loss_val = config["pesq_weight"] * torch.mean(p_loss)
-             loss = loss + pesq_loss_val
+             loss += pesq_loss_val
 
         # SISDR
         if config["sisdr_weight"] > 0 and sisdr_loss_fn is not None:
             # gen_audio: (B, T) -> (B, 1, T)
-            # clean_audio: (B, T) -> (B, 1, T)
-            s_loss = sisdr_loss_fn(gen_audio.unsqueeze(1), clean_audio.unsqueeze(1))
+            # clean_audio_wav: (B, T) -> (B, 1, T)
+            s_loss = sisdr_loss_fn(gen_audio.unsqueeze(1), clean_audio_wav.unsqueeze(1))
             sisdr_loss_val = config["sisdr_weight"] * torch.mean(s_loss)
-            loss = loss + sisdr_loss_val
+            loss += sisdr_loss_val
 
         # CCMSE — MultiResolution Complex Compressed MSE
-        # Both gen_audio and clean_audio are in original amplitude domain here.
+        # Both gen_audio and clean_audio_wav are in original amplitude domain here.
         if ccmse_weight > 0:
-            ccmse_raw = compute_ccmse_loss(gen_audio, clean_audio)
+            ccmse_raw = compute_ccmse_loss(gen_audio, clean_audio_wav)
             ccmse_loss_val = ccmse_weight * ccmse_raw
-            loss = loss + ccmse_loss_val
+            loss += ccmse_loss_val
 
-        def normalize_audio(wav_tensor):
-            """Normalizes audio to zero mean and unit variance per sample.
-            Input: (B, T)
-            Output: (B, T)
-            """
-            mean = wav_tensor.mean(dim=-1, keepdim=True)
-            std = wav_tensor.std(dim=-1, keepdim=True)
-            return (wav_tensor - mean) / (std + 1e-5)   
-        # Latent Drift
-        if latent_drift_weight > 0 and wavlm_model is not None:
-             latent_temps = config.get("latent_temperatures", [0.01, 0.05, 0.1])            
-             # WavLM expects (B, T) input
-             # gen_audio: (B, T), clean_audio: (B, T)
-             with torch.no_grad():
-                 # Extract features (Clean)
-                 # WavLM/Hubert output: (B, T_frames, D)
-                 # WavLM/Hubert output: (B, T_frames, D)
-                 latent_outputs_clean = wavlm_model(normalize_audio(clean_audio), output_hidden_states=True)
-                 # feat_clean = latent_outputs_clean.last_hidden_state
-             
-             # For generated, we need gradients
-             latent_outputs_gen = wavlm_model(normalize_audio(gen_audio), output_hidden_states=True)
-             # feat_gen = latent_outputs_gen.last_hidden_state
-             
-             # Get layers to use
-             wavlm_layers = config.get("feature_layers", [24]) # Default to last layer if not specified
-            #  print('wavlm_layers:{}'.format(wavlm_layers))
-             total_latent_loss_accum = 0.0
-             total_latent_total_norm_accum = 0.0
-             total_latent_pos_norm_accum = 0.0
-             total_latent_neg_norm_accum = 0.0
-             
-             for layer_idx in wavlm_layers:
-                 # Get features for the target layer
-                 feat_clean = latent_outputs_clean.hidden_states[layer_idx]
-                 feat_gen = latent_outputs_gen.hidden_states[layer_idx]
-             
-                 # Reuse normalization logic?
-                 # WavLM features are (B, T, D). 
-                 # We can treat T dimension as 'frames' similar to spectrogram frames, 
-                 # but they are much fewer (20ms stride).
-                 
-                 
-                 # Latent Drift Method
-                 latent_drift_method = config.get("latent_drift_method", "frame_level")
-                 B_size, T_frames, D_dim = feat_gen.shape
-    
-                 f_gen_norm = None
-                 f_pos_norm = None
-                 
-                 if latent_drift_method == "frame_level":
-                     # Flatten to (B*T, D)
-                     f_gen = feat_gen.reshape(B_size * T_frames, D_dim)
-                     f_pos = feat_clean.reshape(B_size * T_frames, D_dim)
-                     
-                     # Normalize (Frame-level Global Scale)
-                     with torch.no_grad():
-                         frame_norms = torch.norm(f_pos, p=2, dim=1, keepdim=True)
-                         global_scale_lat = frame_norms.mean().clamp(min=1e-5)
-                         
-                     f_gen_norm = f_gen / global_scale_lat
-                     f_pos_norm = f_pos / global_scale_lat
-    
-                 elif latent_drift_method == "utterance_level":
-                     # Flatten to (B, T*D)
-                     f_gen = feat_gen.reshape(B_size, T_frames * D_dim)
-                     f_pos = feat_clean.reshape(B_size, T_frames * D_dim)
-                     
-                     # Normalize (Utterance-level Per-Sample Scale)
-                     with torch.no_grad():
-                         utt_norms = torch.norm(f_pos, p=2, dim=1, keepdim=True)
-                         global_scale_lat = utt_norms.clamp(min=1e-8)
-                     
-                     f_gen_norm = f_gen / global_scale_lat
-                     f_pos_norm = f_pos / global_scale_lat
-                     
-                 else:
-                     raise ValueError(f"Unknown latent_drift_method: {latent_drift_method}")
-             
-                 
-                 # Call compute_V loop
-                 V_lat_total = torch.zeros_like(f_gen_norm)
-                 V_pos_total = torch.zeros_like(f_gen_norm)
-                 V_neg_total = torch.zeros_like(f_gen_norm)
-                 
-                 # Positives = Clean, Negatives = Gen
-                 y_pos_lat = f_pos_norm
-                 y_neg_lat = f_gen_norm
-                 
-                 positive_drift_weight = config.get("Positive_drift_weight", 1.0)
-                 negative_drift_weight = config.get("Negative_drift_weight", 1.0)
 
-                 for tau in latent_temps:
-                     V_tau, V_pos_tau, V_neg_tau = compute_V(
-                         f_gen_norm,
-                         y_pos_lat,
-                         y_neg_lat,
-                         tau,
-                         mask_self=True,
-                         return_components=True,
-                         positive_drift_weight=positive_drift_weight,
-                         negative_drift_weight=negative_drift_weight
-                     )
-                    #  v_norm = torch.sqrt(torch.mean(V_tau ** 2) + 1e-8)
-                    #  V_tau = V_tau / (v_norm + 1e-8)
-                     V_lat_total += V_tau
-                     V_pos_total += V_pos_tau
-                     V_neg_total += V_neg_tau
-                     
-                 V_lat_total /= len(latent_temps)
-                 V_pos_total /= len(latent_temps)
-                 V_neg_total /= len(latent_temps)
-                 
-                 # Compute Loss
-                 target_lat = (f_gen_norm + V_lat_total).detach()
-                 l_drift = FF.mse_loss(f_gen_norm, target_lat)
-                 
-                 total_latent_loss_accum += l_drift
-                 
-                 total_latent_total_norm_accum += torch.sqrt(torch.mean(V_lat_total ** 2) + 1e-8).item()
-                 total_latent_pos_norm_accum += torch.sqrt(torch.mean(V_pos_total ** 2) + 1e-8).item()
-                 total_latent_neg_norm_accum += torch.sqrt(torch.mean(V_neg_total ** 2) + 1e-8).item()
-             
-             # Average over layers or Sum? "sum them" says the user prompt.
-             # "extract multi-layer feature, and for each layer, comput the latent drift loss, and sum them"
-             latent_drift_loss_val = latent_drift_weight * total_latent_loss_accum
-             latent_total_norm_val = total_latent_total_norm_accum / len(wavlm_layers)
-             latent_pos_norm_val = total_latent_pos_norm_accum / len(wavlm_layers)
-             latent_neg_norm_val = total_latent_neg_norm_accum / len(wavlm_layers)
-             loss += latent_drift_loss_val
+        # Latent Drift — dispatch to conditional or legacy path
+        latent_drift_loss_val, latent_total_norm_val, latent_pos_norm_val = compute_latent_drift_loss(
+            gen_audio=gen_audio,
+            clean_audio_wav=clean_audio_wav,
+            wavlm_model=wavlm_model,
+            config=config,
+            latent_memory_banks=latent_memory_banks,
+            batch_idx=batch_idx,
+            norm_input_audio=norm_input_audio,
+            gen_audio_neg=None,
+        )
+        if isinstance(latent_drift_loss_val, torch.Tensor):
+            loss += latent_drift_loss_val
 
+        # Auxiliary encoder dual-branch drift loss
+        if aux_encoder_model is not None and aux_encoder_cfg is not None:
+            aux_drift_loss_val, aux_tnorm, aux_pnorm = compute_aux_encoder_drift_loss(
+                gen_audio=gen_audio,
+                clean_audio_wav=clean_audio_wav,
+                aux_model=aux_encoder_model,
+                aux_cfg=aux_encoder_cfg,
+                global_step=global_step,
+                batch_idx=batch_idx,
+                latent_memory_banks=latent_memory_banks,
+                gen_audio_neg=None,
+                config=config,
+            )
+            if isinstance(aux_drift_loss_val, torch.Tensor):
+                loss += aux_drift_loss_val
 
     # 4. Update Model
     accumulate_grad_batches = config.get("accumulate_grad_batches", 1)
     
-    # Scale loss
-    loss = loss / accumulate_grad_batches
-    loss.backward()
+    # Scale loss and backward if a tensor loss is active
+    if isinstance(loss, torch.Tensor):
+        loss = loss / accumulate_grad_batches
+        loss.backward()
+    else:
+        # Avoid AttributeError: 'float' object has no attribute 'backward' if all loss weights are zero
+        pass
 
     # Step Optimizer
-    if (batch_idx + 1) % accumulate_grad_batches == 0:
+    if isinstance(loss, torch.Tensor) and (batch_idx + 1) % accumulate_grad_batches == 0:
         # Gradient clipping
         grad_norm = torch.nn.utils.clip_grad_norm_(
             model.parameters(), config["grad_clip"]
@@ -445,18 +272,16 @@ def train_step(
         grad_norm = torch.tensor(0.0)
 
     # Unscale loss for logging
-    loss_val = loss.item() * accumulate_grad_batches
+    loss_val = loss.item() * accumulate_grad_batches if isinstance(loss, torch.Tensor) else loss * accumulate_grad_batches
     
     return {
         "loss": loss_val,
+        "mse": mse_loss_val.item() if isinstance(mse_loss_val, torch.Tensor) else mse_loss_val,
         "pesq": pesq_loss_val.item() if isinstance(pesq_loss_val, torch.Tensor) else pesq_loss_val,
         "sisdr": sisdr_loss_val.item() if isinstance(sisdr_loss_val, torch.Tensor) else sisdr_loss_val,
         "ccmse": ccmse_loss_val.item() if isinstance(ccmse_loss_val, torch.Tensor) else ccmse_loss_val,
         "latent_drift": latent_drift_loss_val.item() if isinstance(latent_drift_loss_val, torch.Tensor) else latent_drift_loss_val,
-        "latent_total_norm": latent_total_norm_val if latent_drift_weight > 0 else 0.0,
-        "latent_pos_norm": latent_pos_norm_val if latent_drift_weight > 0 else 0.0,
-        "latent_neg_norm": latent_neg_norm_val if latent_drift_weight > 0 else 0.0,
-        "grad_norm": grad_norm.item()
+        "aux_drift": aux_drift_loss_val.item() if isinstance(aux_drift_loss_val, torch.Tensor) else aux_drift_loss_val
     }
 
 
@@ -466,13 +291,13 @@ def train(
     resume: Optional[str] = None,
     num_workers: int = 8,
     log_interval: int = 50,
-    save_interval: int = 10,
+    save_interval: int = 5,
 ):
     """Main training loop."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     set_seed(seed)
     config = load_config(config_path)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # print(f"Using device: {device}")
 
     output_dir = Path(config["output_dir"])
@@ -480,23 +305,38 @@ def train(
 
     # Initialize WandB
     wandb.init(
-        project="drifting_se",
+        project="DriftSE",
         config=config,
         dir=str(output_dir),
-        name=f"se_drift_e{config['epochs']}" 
+        name=f"drift_sr_{os.path.basename(config['enhanced_dir'])}" 
     )
 
     # 1. Dataset
-    print(f"Loading dataset from {config['data_dir']}...")
-    train_dataset = SpeechDataset(
-        data_dir=config['data_dir'], 
-        subset="train", 
-        dummy=False, 
-        shuffle_spec=True,
-        num_frames=config["image_size"], # T=256
-        return_waveform=True,
-        noise_dir=config.get('noise_dir', "/home/liangxu/data/DEMAND_16k/"),
-    )
+    dataset_kwargs = {
+        'data_dir': None, 
+        'subset': "train", 
+        'dummy': False, 
+        'shuffle_spec': True,
+        'num_frames': config["image_size"], # T=256
+        'return_waveform': True,
+        'task': config.get('task', 'se')
+    }
+    
+    # Only pass overrides if explicitly provided in the JSON
+    for k in ['noise_dir', 'clean_dir', 'mix_clean_dir', 'use_paird_training', 'clean_data_source', 'noisy_data_source', 'mixture_clean_source', 'mix_noisy_on_the_fly', 'normalize']:
+        if k in config:
+            dataset_kwargs[k] = config[k]
+            
+    # Explicitly configure stft_kwargs from the JSON config to align hop_length and n_fft
+    dataset_kwargs['stft_kwargs'] = {
+        "n_fft": config.get("n_fft", 510),
+        "hop_length": config.get("hop_length", 128),
+        "window": config.get("window_type", "hann"),
+        "center": config.get("center", True),
+        "return_complex": True
+    }
+            
+    train_dataset = SpeechDataset(**dataset_kwargs)
     
     train_loader = DataLoader(
         train_dataset,
@@ -522,89 +362,263 @@ def train(
         print("Initializing SISDR Loss...")
         sisdr_loss_fn = PITLossWrapper(pairwise_neg_sisdr, pit_from='pw_mtx')
 
-    # 1.6 Latent Model (WavLM or Hubert)
+    # 1.6 Latent Model (WavLM, HuBERT, or WavCube-pro)
     wavlm_model = None
     if config.get("latent_drift_weight", 0) > 0:
         model_type = config.get("latent_model_type", "wavlm").lower()
-        model_path = os.environ.get("WAVLM_LARGE_PATH", "./latent_ckpt/wavlm-large-local")
         
-        try:
-            if model_type == "hubert":
-                model_path = os.environ.get("HUBERT_LARGE_PATH", "./latent_ckpt/hubert-large-local")
-                wavlm_model = HubertModel.from_pretrained(model_path)
-            elif model_type == "distillhubert":
-                model_path = os.environ.get("DISTILHUBERT_PATH", "./latent_ckpt/distilhubert-local")
-                wavlm_model = HubertModel.from_pretrained(model_path)
-            else:
-                # Default to WavLM
-                wavlm_model = WavLMModel.from_pretrained(model_path)
-            print(f"Initializing Latent Model: {model_type} from {model_path}...")
-            wavlm_model.to(device)
-            wavlm_model.eval()
-            # Freeze 
-            for param in wavlm_model.parameters():
-                param.requires_grad = False
-            print(f"{model_type} loaded and frozen.")
-        except Exception as e:
-            print(f"Failed to load Latent Model ({model_type}): {e}")
-            print("Continuing without latent drift...")
-            raise ValueError('Latent model load failed!')
+        if "wavcubepro" in model_type:
+            wavcube_dir = "/vol/liangxu-solar/exp_code/latent_ckpt/WavCube"
+            if wavcube_dir not in sys.path:
+                sys.path.insert(0, wavcube_dir)
+            try:
+                from vocos import Vocos
+            except ImportError as e:
+                print(f"Failed to import vocos: {e}")
+                raise ValueError("vocos package is not installed or not in sys.path.")
+                
+            wavcube_config_path = config.get("wavcubepro_config", os.path.join(wavcube_dir, "configs/WavCube-stage2.yaml"))
+            wavcube_ckpt_path = config.get("wavcubepro_ckpt", os.path.join(wavcube_dir, "WavCube-pro/checkpoints/vocos_checkpoint_epoch%3D34_step%3D200000_val_loss%3D3.2140.ckpt"))
+            model_path = wavcube_ckpt_path
+            
+            try:
+                print(f"Initializing WavCube-pro model from config: {wavcube_config_path} and ckpt: {wavcube_ckpt_path}...")
+                vocos_model = Vocos.from_config(wavcube_config_path)
+                state_dict = torch.load(wavcube_ckpt_path, map_location="cpu")["state_dict"]
+                vocos_model.load_state_dict(state_dict, strict=False)
+                vocos_model = vocos_model.to(device)
+                vocos_model.eval()
+                
+                # Freeze parameters
+                for param in vocos_model.parameters():
+                    param.requires_grad = False
+                print(f"WavCube-pro loaded and frozen.")
+                
+                # Wrap in compatibility class
+                class WavCubeProWrapper(nn.Module):
+                    def __init__(self, vocos):
+                        super().__init__()
+                        self.vocos = vocos
+                        # WavCube-pro features dimension is 128
+                        self.config = argparse.Namespace(hidden_size=128)
+                        
+                    def forward(self, audio, output_hidden_states=True):
+                        fe = self.vocos.feature_extractor
+                        fe.eval()
+                        
+                        z_hat = fe.inf_new(audio)
+                        
+                        class ModelOutput:
+                            def __init__(self, hidden_states, last_hidden_state):
+                                self.hidden_states = hidden_states
+                                self.last_hidden_state = last_hidden_state
+                                
+                        return ModelOutput(hidden_states=[z_hat], last_hidden_state=z_hat)
+                
+                wavlm_model = WavCubeProWrapper(vocos_model)
+            except Exception as e:
+                print(f"Failed to load WavCube-pro: {e}")
+                raise ValueError("WavCube-pro load failed!")
+        elif model_type in ("panns", "beats"):
+            # ── PANNs / BEATs as the main backbone ──────────────────────────
+            # Hardcoded default paths (same pattern as wavcubepro above).
+            # Any key can be overridden via config["latent_ckpt_dir"] /
+            # config["latent_ckpt_file"] / config["latent_sample_rate"], or
+            # via a nested config["main_encoder"] dict.
+            _PANNS_DIR  = "/vol/liangxu-solar/exp_code/latent_ckpt/panns-local"
+            _PANNS_FILE = "Cnn14_mAP=0.431.pth"
+            _BEATS_DIR  = "/vol/liangxu-solar/exp_code/latent_ckpt/beats-local/"
+            _BEATS_FILE = "BEATs_iter3_plus_AS2M.pt"
 
+            if model_type == "panns":
+                _default_dir  = _PANNS_DIR
+                _default_file = _PANNS_FILE
+                _default_sr   = 32000
+            else:  # beats
+                _default_dir  = _BEATS_DIR
+                _default_file = _BEATS_FILE
+                _default_sr   = 16000
+
+            main_enc_cfg = config.get("main_encoder", {})
+            if not main_enc_cfg:
+                main_enc_cfg = {
+                    "type":        model_type,
+                    "ckpt_dir":    config.get("latent_ckpt_dir",    _default_dir),
+                    "ckpt_file":   config.get("latent_ckpt_file",   _default_file),
+                    "sample_rate": config.get("latent_sample_rate", _default_sr),
+                }
+            else:
+                main_enc_cfg.setdefault("type",        model_type)
+                main_enc_cfg.setdefault("ckpt_dir",    _default_dir)
+                main_enc_cfg.setdefault("ckpt_file",   _default_file)
+                main_enc_cfg.setdefault("sample_rate", _default_sr)
+
+            layer_indices = {sc["layer"] for sc in config.get("scales", [])}
+            sr_main = main_enc_cfg["sample_rate"]
+
+            print(f"Initializing Latent Model: {model_type} "
+                  f"from {main_enc_cfg['ckpt_dir']}/{main_enc_cfg['ckpt_file']} ...")
+            _raw_main_enc = load_aux_encoder(main_enc_cfg, device)
+
+            class AuxEncoderWrapper(nn.Module):
+                """Wraps a PANNs-CNN14 or BEATs model into the backbone interface.
+
+                Satisfies: model(audio, output_hidden_states=True) → obj with
+                    obj.hidden_states  : list[Tensor(B, T, D)]  indexed by layer
+                The list is sparse — only the indices requested in `layer_indices`
+                are filled; all others are None.  compute_conditional_drift_loss
+                only accesses indices listed in config["scales"], so this is safe.
+                """
+                def __init__(self, raw_model, enc_type, layer_indices, sr):
+                    super().__init__()
+                    self.raw_model     = raw_model
+                    self.enc_type      = enc_type
+                    self.layer_indices = layer_indices
+                    self.sr            = sr
+                    # Expose a dummy .config.hidden_size for any callers that inspect it
+                    max_dim = 2048  # PANNs block6; BEATs is 768
+                    self.config = argparse.Namespace(hidden_size=max_dim)
+
+                def forward(self, audio, output_hidden_states=True):
+                    feats = _aux_extract_features(
+                        audio, self.raw_model, self.enc_type,
+                        self.layer_indices, self.sr,
+                        no_grad=not torch.is_grad_enabled(),
+                    )
+                    # Build a hidden_states list up to max(layer_indices)+1
+                    max_idx = max(self.layer_indices) + 1
+                    hs = [feats.get(i, None) for i in range(max_idx)]
+
+                    class ModelOutput:
+                        def __init__(self, hidden_states):
+                            self.hidden_states    = hidden_states
+                            self.last_hidden_state = hidden_states[-1] if hidden_states else None
+
+                    return ModelOutput(hidden_states=hs)
+
+            wavlm_model = AuxEncoderWrapper(_raw_main_enc, model_type, layer_indices, sr_main)
+            print(f"[MainEncoder] {model_type.upper()} wrapped and ready (layers={sorted(layer_indices)}, sr={sr_main}).")
+
+        else:
+            # Determine Hugging Face model ID based on model_type
+            if "distill" in model_type.lower() or "distil" in model_type.lower():
+                model_path = "./latent_ckpt/distilhubert-local"
+                model_cls = HubertModel
+            elif "hubert" in model_type.lower():
+                model_path = "./latent_ckpt/hubert-large-local"
+                model_cls = HubertModel
+            elif "dewavlm" in model_type.lower():
+                model_path = os.environ.get("DEWAVLM_PATH", "./latent_ckpt/DeWavLM/DeWavLM-R.pt")
+                model_cls = None
+            else:
+                model_path = "./latent_ckpt/wavlm-large-local"
+                model_cls = WavLMModel
+
+            try:
+                print(f"Initializing Latent Model: {model_type} from {model_path}...")
+                if "dewavlm" in model_type.lower():
+                    try:
+                        from latent_ckpt.DeWavLM import DeWavLMModel
+                        wavlm_model = DeWavLMModel.from_pretrained(model_path, device=device)
+                    except Exception as native_err:
+                        print(f"Native DeWavLMModel failed: {native_err}, falling back to HF WavLMModel")
+                        wavlm_model = WavLMModel.from_pretrained("./latent_ckpt/wavlm-large-local")
+                        if os.path.exists(model_path) and os.path.getsize(model_path) > 0:
+                            cpt = torch.load(model_path, map_location="cpu")
+                            state_dict = cpt["state_dict"] if "state_dict" in cpt else (cpt["model"] if "model" in cpt else cpt)
+                            cleaned_dict = {}
+                            for k, v in state_dict.items():
+                                key = k.replace("model.", "").replace("wavlm.", "")
+                                cleaned_dict[key] = v
+                            wavlm_model.load_state_dict(cleaned_dict, strict=False)
+                else:
+                    wavlm_model = model_cls.from_pretrained(model_path)
+                
+                wavlm_model.to(device)
+                wavlm_model.eval()
+                # Freeze
+                for param in wavlm_model.parameters():
+                    param.requires_grad = False
+                print(f"{model_type} loaded and frozen.")
+            except Exception as e:
+                print(f"Failed to load Latent Model ({model_type}) from {model_path}: {e}")
+                raise ValueError('Latent model load failed!')
+
+    # Determine if normalization is needed
+    norm_input_audio = True
+    if wavlm_model is not None:
+        if model_type in ("panns", "beats"):
+            # PANNs / BEATs handle their own resampling inside _aux_extract_features;
+            # the wrapper should receive raw (possibly already-16kHz) audio — no
+            # global normalisation needed here (PANNs expects raw waveform).
+            norm_input_audio = False
+            print(f"[*] Note: {model_type} manages its own pre-processing. Audio normalization is DISABLED.")
+        elif 'wavlm-base' in model_type.lower() or 'distil' in model_type.lower():
+            norm_input_audio = False
+            print(f"[*] Note: {model_type} expects UNNORMALIZED audio inputs. Audio normalization is DISABLED.")
+        else:
+            print(f"[*] Note: {model_type} expects NORMALIZED audio inputs. Audio normalization is ENABLED.")
 
     # 2. Model (NCSN++ v2)
-    print(f"Creating model {config['model']} (NCSN++)...")
+    print(f"Creating model {config['model']}...")
 
-    if config['model'].lower() == 'ncsnpp_v2_drift':
-        model = ncsnpp_v2_drift(
+    if config['model'].lower() == 'ncsnpp_v2_drift_input_condition':
+        model = ncsnpp_v2_drift_input_condition(
             nf=config["nf"],
             ch_mult=config["ch_mult"],
             num_res_blocks=config["num_res_blocks"],
             attn_resolutions=config["attn_resolutions"],
-        image_size=config["image_size"],
-        fourier_scale=config["fourier_scale"],
-        resamp_with_conv=config["resamp_with_conv"],
-        fir=config["fir"],
-        fir_kernel=config["fir_kernel"],
-        skip_rescale=config["skip_rescale"],
-        resblock_type=config["resblock_type"],
-        progressive=config["progressive"],
-        progressive_input=config["progressive_input"],
-        progressive_combine=config["progressive_combine"],
-        init_scale=config["init_scale"],
-        embedding_type=config["embedding_type"],
-        dropout=config["dropout"],
-    ).to(device)    
+            image_size=config["image_size"],
+            fourier_scale=config["fourier_scale"],
+            resamp_with_conv=config["resamp_with_conv"],
+            fir=config["fir"],
+            fir_kernel=config["fir_kernel"],
+            skip_rescale=config["skip_rescale"],
+            resblock_type=config["resblock_type"],
+            progressive=config["progressive"],
+            progressive_input=config["progressive_input"],
+            progressive_combine=config["progressive_combine"],
+            init_scale=config["init_scale"],
+            embedding_type=config["embedding_type"],
+            dropout=config["dropout"],
+        ).to(device)
+    elif config['model'].lower() == 'tfgridnet':
+        model = TFGridNet_Backbone(
+            n_layers          = config.get('n_layers', 5),
+            emb_dim           = config.get('emb_dim', 32),
+            lstm_hidden_units = config.get('lstm_hidden_units', 100),
+            attn_n_head       = config.get('attn_n_head', 4),
+            causal            = config.get('causal', False),
+        ).to(device)
+    elif config['model'].lower() == 'tfgridnet_causal':
+        model = TFGridNet_Causal(
+            n_srcs                 = config.get('n_srcs', 1),
+            n_layers               = config.get('n_layers', 6),
+            lstm_hidden_units      = config.get('lstm_hidden_units', 192),
+            attn_n_head            = config.get('attn_n_head', 4),
+            attn_qk_output_channel = config.get('attn_qk_output_channel', 4),
+            emb_dim                = config.get('emb_dim', 48),
+            emb_ks                 = config.get('emb_ks', 4),
+            emb_hs                 = config.get('emb_hs', 1),
+            eps                    = config.get('eps', 1e-5),
+        ).to(device)
+    elif config['model'].lower() == 'streamunet':
+        model = CausalNCSNpp(
+            nf              = config['nf'],
+            ch_mult         = config['ch_mult'],
+            num_res_blocks  = config['num_res_blocks'],
+            input_channels  = config.get('input_channels', 4),
+            output_channels = config.get('output_channels', 2),
+            input_freqs     = config.get('input_freqs', 256),
+            dropout         = config.get('dropout', 0.0),
+            norm_type       = config.get('norm_type', 'subband_grouped_batchnorm'),
+            no_freq_groups_below = config.get('no_freq_groups_below', 16),
+            freq_groups     = config.get('freq_groups', 4),
+            down_dilation   = config.get('down_dilation', 2),
+            attn_resolutions = tuple(config.get('attn_resolutions', [])),
+        ).to(device)
     else:
-        model = NCSNpp_v2(
-        nf=config["nf"],
-        ch_mult=config["ch_mult"],
-        num_res_blocks=config["num_res_blocks"],
-        attn_resolutions=config["attn_resolutions"],
-        image_size=config["image_size"],
-        fourier_scale=config["fourier_scale"],
-        resamp_with_conv=config["resamp_with_conv"],
-        fir=config["fir"],
-        fir_kernel=config["fir_kernel"],
-        skip_rescale=config["skip_rescale"],
-        resblock_type=config["resblock_type"],
-        progressive=config["progressive"],
-        progressive_input=config["progressive_input"],
-        progressive_combine=config["progressive_combine"],
-        init_scale=config["init_scale"],
-        embedding_type=config["embedding_type"],
-        dropout=config["dropout"],
-    ).to(device)
-
-    # Initialize output layer to zero for stable potential initialization
-    # Ensures gen starts near 0, making initial distance to target ~1.0 (Unit Sphere)
-    # nn.init.xavier_uniform_(model.output_layer.weight) # Let the model start with some signal
-    # nn.init.zeros_(model.output_layer.weight)
-    # if model.output_layer.bias is not None:
-        # nn.init.zeros_(model.output_layer.bias)
-
-    print("\n" + "="*100)
-    print("MODEL SUMMARY")
-    print("="*100)
+        raise ValueError(f"Unknown model name: {config['model']}")
 
     # Create dummy input matching your data format
     # Input: x (noisy+noise), y (noisy condition), t (time)
@@ -613,16 +627,53 @@ def train(
                         dtype=torch.complex64, device=device)
     dummy_t = torch.ones(batch_size, device=device)
 
-    summary(
-        model, 
-        input_data=[dummy_x, dummy_t],
-        # col_names=["input_size", "output_size", "num_params", "trainable"],
-        depth=0,
-        verbose=0
-    )
 
-    print("="*100 + "\n")
+    # print("="*100 + "\n")
     print(f"Model Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M")
+
+    if 'causal' in config['model'].lower() or config['model'].lower() == 'streamunet':
+        print("\n" + "="*50)
+        print("Executing Time Axis Causal Check...")
+        model.eval()
+        with torch.no_grad():
+            B, C, F, T_steps = 4, 1, config["image_size"], 64
+            dummy_x1 = torch.randn(B, C, F, T_steps, dtype=torch.complex64, device=device)
+            dummy_y1 = torch.randn(B, C, F, T_steps, dtype=torch.complex64, device=device)
+            dummy_t = torch.ones(B, device=device)
+
+            # Use appropriate forward depending on model type
+            use_cond_fwd = config.get('use_conditional_backbone', False) or 'input_condition' in config['model'].lower()
+            if use_cond_fwd:
+                out1 = model(dummy_x1, dummy_y1, dummy_t)
+            else:
+                out1 = model(dummy_x1, dummy_t)
+                
+            t_change = (T_steps // 2) + 1
+            dummy_x2 = dummy_x1.clone()
+            dummy_y2 = dummy_y1.clone()
+            
+            # Perturb future
+            dummy_x2[:, :, :, t_change:] += torch.randn_like(dummy_x2[:, :, :, t_change:]) * 10.0
+            dummy_y2[:, :, :, t_change:] += torch.randn_like(dummy_y2[:, :, :, t_change:]) * 10.0
+            
+            if use_cond_fwd:
+                out2 = model(dummy_x2, dummy_y2, dummy_t)
+            else:
+                out2 = model(dummy_x2, dummy_t)
+                
+            diff_past = torch.mean(torch.abs(out1[:, :, :, :t_change] - out2[:, :, :, :t_change])).item()
+            diff_future = torch.mean(torch.abs(out1[:, :, :, t_change:] - out2[:, :, :, t_change:])).item()
+            
+            if diff_past < 1e-5 and diff_future > 1e-5:
+                print(f"Causality Check PASSED. (Diff past: {diff_past:.8f}, Diff future: {diff_future:.8f})")
+            elif diff_past >= 1e-5:
+                print(f"Causality Check FAILED! Information leaked to the past. (Diff past: {diff_past:.8f}, Diff future: {diff_future:.8f})")
+            else:
+                print(f"Causality Check FAILED! Network seems to ignore the input (Diff future < 1e-5). (Diff past: {diff_past:.8f}, Diff future: {diff_future:.8f})")
+                
+        # Re-enter train mode
+        model.train()
+        print("="*50 + "\n")
 
     # EMA
     ema = EMA(model, decay=config["ema_decay"])
@@ -661,6 +712,41 @@ def train(
         global_step = checkpoint["step"]
         print(f"Resumed from epoch {start_epoch}, step {global_step}")
 
+    # Initialize Memory Banks for Latent Drift
+    latent_memory_banks = {
+        'pos': {},
+        'neg': {}
+    }
+
+    # Load Offline Codebooks (shared by manifold guidance and MCD)
+    offline_codebooks = {}
+    codebook_path = config.get("mcd_codebook_path", "./reverb/manifold_codebooks.pt")
+    if config.get("use_manifold_guidance", False) or config.get("use_mcd", False):
+        if os.path.exists(codebook_path):
+            print(f"Loading Offline Codebooks from {codebook_path}...")
+            offline_codebooks = torch.load(codebook_path, map_location=device)
+            # Report which layers are available
+            print(f"  -> Available layers in codebook: {sorted(offline_codebooks.keys())}")
+        else:
+            print(f"Warning: Codebook not found at {codebook_path}. Disabling manifold guidance and MCD.")
+            config["use_manifold_guidance"] = False
+            config["use_mcd"] = False
+
+    # For backward compatibility, alias both as the same dict
+    manifolds_dict = offline_codebooks  # keyed by layer_idx (int)
+    mcd_codebooks = offline_codebooks
+
+    # 1.7 Auxiliary encoder (BEATs / PANNs) for dual-branch drifting
+    aux_encoder_model = None
+    aux_encoder_cfg   = config.get("aux_encoder", None)
+    if aux_encoder_cfg is not None:
+        try:
+            aux_encoder_model = load_aux_encoder(aux_encoder_cfg, device)
+        except Exception as e:
+            print(f"[AuxEncoder] WARNING: failed to load aux encoder: {e}")
+            aux_encoder_model = None
+
+
     # Training Loop
     print(f"\nStarting training for {config['epochs']} epochs...")
 
@@ -673,7 +759,7 @@ def train(
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{config['epochs']}")
         
         for batch_idx, batch in enumerate(pbar):
-            info = train_step(model, optimizer, batch, batch_idx, config, device, pesq_loss_fn, sisdr_loss_fn, wavlm_model)
+            info = train_step(model, optimizer, batch, batch_idx, config, device, pesq_loss_fn, sisdr_loss_fn, wavlm_model, latent_memory_banks, manifolds_dict, mcd_codebooks, global_step=global_step, norm_input_audio=norm_input_audio, aux_encoder_model=aux_encoder_model, aux_encoder_cfg=aux_encoder_cfg)
             
             
             ema.update(model)
@@ -685,27 +771,18 @@ def train(
             
             # Log to WandB
             lr = scheduler.get_lr()
-            wandb.log({
-                "loss": info['loss'],
-                "latent_drift": info['latent_drift'],                
-                "ccmse": info['ccmse'],                
-                "pesq": info['pesq'],
-                "sisdr": info['sisdr'],
-                "grad_norm": info['grad_norm'],
-                "lr": lr,
-                "epoch": epoch
-            }, step=global_step)
-            # Update pbar
-            pbar_dict = {"Loss": f"{info['loss']:.8f}"}
-            if config.get("latent_drift_weight", 0.0) > 0:
-                pbar_dict["Latnt"] = f"{info['latent_drift']:.8f}"
-            if config.get("ccmse_weight", 0.0) > 0:
-                pbar_dict["CMSE"] = f"{info['ccmse']:.8f}"
-            if config.get("sisdr_weight", 0.0) > 0:
-                pbar_dict["SDR"] = f"{info['sisdr']:.6f}"
+            _postfix = {"Loss": f"{info['loss']:.8f}", "latent_drift": f"{info['latent_drift']:.8f}"}
+            if config.get("MSE_weight", 0.0) > 0:
+                _postfix["mse"] = f"{info['mse']:.8f}"
             if config.get("pesq_weight", 0.0) > 0:
-                pbar_dict["PESQ"] = f"{info['pesq']:.6f}"
-            pbar.set_postfix(pbar_dict)
+                _postfix["pesq"] = f"{info['pesq']:.8f}"
+            if config.get("sisdr_weight", 0.0) > 0:
+                _postfix["sisdr"] = f"{info['sisdr']:.8f}"
+            if config.get("ccmse_weight", 0.0) > 0:
+                _postfix["ccmse"] = f"{info['ccmse']:.8f}"
+            if aux_encoder_cfg is not None:
+                _postfix["aux_drift"] = f"{info['aux_drift']:.8f}"   
+            pbar.set_postfix(_postfix)
 
         # Handle last batch if not perfectly divisible
         if (batch_idx + 1) % config.get("accumulate_grad_batches", 1) != 0:
@@ -713,27 +790,25 @@ def train(
              optimizer.zero_grad()
         avg_loss = epoch_loss / max(num_batches, 1)
         
-        log_str = f"Epoch {epoch+1} | {time.time()-epoch_start:.1f}s | Loss: {avg_loss:.8f}"
-        if config.get("latent_drift_weight", 0.0) > 0:
-            log_str += f" | L: {info['latent_drift']:.8f}"
-        if config.get("ccmse_weight", 0.0) > 0:
-            log_str += f" | CCMSE: {info['ccmse']:.6f}"
+        print_str = f"Epoch {epoch+1} | {time.time()-epoch_start:.1f}s | Loss: {avg_loss:.8f} | L: {info['latent_drift']:.8f}"
+        if config.get("MSE_weight", 0.0) > 0:
+            print_str += f" | MSE: {info['mse']:.8f}"
         if config.get("pesq_weight", 0.0) > 0:
-            log_str += f" | P: {info['pesq']:.5f}"
+            print_str += f" | PESQ: {info['pesq']:.8f}"
         if config.get("sisdr_weight", 0.0) > 0:
-            log_str += f" | S: {info['sisdr']:.5f}"
-        
-        print(log_str)
+            print_str += f" | SISDR: {info['sisdr']:.8f}"
+        if config.get("ccmse_weight", 0.0) > 0:
+            print_str += f" | CCMSE: {info['ccmse']:.8f}"
+        if aux_encoder_cfg is not None:
+            print_str += f" | AuxDrift: {info['aux_drift']:.8f}"    
+        print(print_str)
 
         wandb.log({"epoch_loss": avg_loss, 
-        "ccmse": info['ccmse'],        
         "pesq": info['pesq'],
         "sisdr": info['sisdr'],
+        "ccmse": info.get('ccmse', 0.0),
         "latent_drift": info['latent_drift'],
-        "latent_total_norm": info.get('latent_total_norm', 0.0),
-        "latent_pos_norm": info.get('latent_pos_norm', 0.0),
-        "latent_neg_norm": info.get('latent_neg_norm', 0.0),
-        "grad_norm": info['grad_norm'],
+        "aux_drift": info.get('aux_drift', 0.0),
         "lr": lr,
         "epoch": epoch
         }, step=global_step)

@@ -18,10 +18,7 @@ if [ "$#" -ge 2 ]; then
     CONFIGS=("$2")
 else
     CONFIGS=(       
-        "./config/with_z/v2_drift2_distillhubert_three_layers.json"
-        "./config/with_z/v2_drift2_distillhubert_three_layers_pesq_sisdr_ccmse.json"
-        "./config/with_z/v2_drift2_hubert_three_layers.json"
-        "./config/with_z/v2_drift2_wavlm_three_layers.json"
+        "./config/DriftSE/experiments/SE_EARS_distilhubert_ch1282_incond_PANNs.json"
     )
 fi
 # Assert all config files exist
@@ -38,17 +35,17 @@ done
 # PHASE 1: Run all enhancement
 # ============================================================================
 
-# TOTAL=${#CONFIGS[@]}
-# echo "========================================"
-# echo "PHASE 1: Running all enhancement"
-# echo "========================================"
-# # Loop through configs
-# for i in "${!CONFIGS[@]}"; do
-#     CONFIG=${CONFIGS[$i]}
-#     echo "Running: $CONFIG ($((i+1))/$TOTAL)"
-#     [ ! -f "$CONFIG" ] && echo "Skipped" && continue
-#     python enhancement.py --config "$CONFIG"
-# done
+TOTAL=${#CONFIGS[@]}
+echo "========================================"
+echo "PHASE 1: Running all enhancement"
+echo "========================================"
+# Loop through configs
+for i in "${!CONFIGS[@]}"; do
+    CONFIG=${CONFIGS[$i]}
+    echo "Running: $CONFIG ($((i+1))/$TOTAL)"
+    [ ! -f "$CONFIG" ] && echo "Skipped" && continue
+    python enhancement.py --config "$CONFIG"
+done
 
 # ============================================================================
 # PHASE 2: Run all metrics calculations (CPU)

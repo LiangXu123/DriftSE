@@ -32,10 +32,11 @@ get_act = layers.get_act
 get_normalization = normalization.get_normalization
 default_initializer = layers.default_init
 
-
-@BackboneRegistry.register("ncsnpp_v2")
-class NCSNpp_v2(nn.Module):
-    """NCSN++ model, adapted from https://github.com/yang-song/score_sde repository"""
+@BackboneRegistry.register("ncsnpp_v2_drift_input_condition")
+class ncsnpp_v2_drift_input_condition(nn.Module):
+    """NCSN++ model, adapted from https://github.com/yang-song/score_sde repository
+    Time-independent version: t parameter kept for compatibility but not used.
+    """
 
     @staticmethod
     def add_argparse_args(parser):
@@ -64,12 +65,10 @@ class NCSNpp_v2(nn.Module):
         image_size = 256,
         embedding_type = 'fourier',
         dropout = .0,
-        real_valued = False,
         **unused_kwargs
     ):
         super().__init__()
         self.act = act = get_act(nonlinearity)
-        self.real_valued = real_valued
 
         self.nf = nf = nf
         ch_mult = ch_mult
@@ -89,33 +88,13 @@ class NCSNpp_v2(nn.Module):
         combine_method = progressive_combine.lower()
         combiner = functools.partial(Combine, method=combine_method)
 
-        if self.real_valued:
-            in_channels = 2   # x, y
-            out_channels = 1  # score
-        else:
-            in_channels = 4   # x.real, x.imag, y.real, y.imag
-            out_channels = 2  # score.real, score.imag
+        in_channels = 4   # x.real, x.imag
+        out_channels = 2  # score.real, score.imag
         self.output_layer = nn.Conv2d(in_channels, out_channels, 1)
 
         modules = []
-        # timestep/noise_level embedding
-        if embedding_type == 'fourier':
-            # Gaussian Fourier features embeddings.
-            modules.append(layerspp.GaussianFourierProjection(
-                embedding_size=nf, scale=fourier_scale
-            ))
-            embed_dim = 2 * nf
-        elif embedding_type == 'positional':
-            embed_dim = nf
-        else:
-            raise ValueError(f'embedding type {embedding_type} unknown.')
-
-        modules.append(nn.Linear(embed_dim, nf * 4))
-        modules[-1].weight.data = default_initializer()(modules[-1].weight.shape)
-        nn.init.zeros_(modules[-1].bias)
-        modules.append(nn.Linear(nf * 4, nf * 4))
-        modules[-1].weight.data = default_initializer()(modules[-1].weight.shape)
-        nn.init.zeros_(modules[-1].bias)
+        
+        # NO TIME EMBEDDING - removed all time embedding modules
 
         AttnBlock = functools.partial(layerspp.AttnBlockpp,
             init_scale=init_scale, skip_rescale=skip_rescale)
@@ -124,7 +103,7 @@ class NCSNpp_v2(nn.Module):
             with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
 
         if progressive == 'output_skip':
-            self.pyramid_upsample = layerspp.Upsample(fir=fir, fir_kernel=fir_kernel, with_conv=False)
+            self.pyramid_upsample = layerspp.Upsample(in_ch=in_channels, fir=fir, fir_kernel=fir_kernel, with_conv=False)
         elif progressive == 'residual':
             pyramid_upsample = functools.partial(layerspp.Upsample, fir=fir,
                 fir_kernel=fir_kernel, with_conv=True)
@@ -132,7 +111,7 @@ class NCSNpp_v2(nn.Module):
         Downsample = functools.partial(layerspp.Downsample, with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
 
         if progressive_input == 'input_skip':
-            self.pyramid_downsample = layerspp.Downsample(fir=fir, fir_kernel=fir_kernel, with_conv=False)
+            self.pyramid_downsample = layerspp.Downsample(in_ch=in_channels, fir=fir, fir_kernel=fir_kernel, with_conv=False)
         elif progressive_input == 'residual':
             pyramid_downsample = functools.partial(layerspp.Downsample,
                 fir=fir, fir_kernel=fir_kernel, with_conv=True)
@@ -140,18 +119,17 @@ class NCSNpp_v2(nn.Module):
         if resblock_type == 'ddpm':
             ResnetBlock = functools.partial(ResnetBlockDDPM, act=act,
                 dropout=dropout, init_scale=init_scale,
-                skip_rescale=skip_rescale, temb_dim=nf * 4)
+                skip_rescale=skip_rescale, temb_dim=None)  # No time embedding
 
         elif resblock_type == 'biggan':
             ResnetBlock = functools.partial(ResnetBlockBigGAN, act=act,
                 dropout=dropout, fir=fir, fir_kernel=fir_kernel,
-                init_scale=init_scale, skip_rescale=skip_rescale, temb_dim=nf * 4)
+                init_scale=init_scale, skip_rescale=skip_rescale, temb_dim=None)  # No time embedding
 
         else:
             raise ValueError(f'resblock type {resblock_type} unrecognized.')
 
         # Downsampling block
-
         channels = in_channels
         if progressive_input != 'none':
             input_pyramid_ch = channels
@@ -196,7 +174,7 @@ class NCSNpp_v2(nn.Module):
         pyramid_ch = 0
         # Upsampling block
         for i_level in reversed(range(num_resolutions)):
-            for i_block in range(num_res_blocks + 1):  # +1 blocks in upsampling because of skip connection from combiner (after downsampling)
+            for i_block in range(num_res_blocks + 1):
                 out_ch = nf * ch_mult[i_level]
                 modules.append(ResnetBlock(in_ch=in_ch + hs_c.pop(), out_ch=out_ch))
                 in_ch = out_ch
@@ -242,39 +220,26 @@ class NCSNpp_v2(nn.Module):
             modules.append(conv3x3(in_ch, channels, init_scale=init_scale))
 
         self.all_modules = nn.ModuleList(modules)
-        
 
-    def forward(self, x, y, t):
-        # timestep/noise_level embedding; only for continuous training
+    def forward(self, x, y, t=None):
+        """
+        Args:
+            x: z input [B, 1, F, T] (complex)
+            y: Condition [B, 1, F, T] (complex)
+        
+        Returns:
+            Output [B, 1, F, T] (complex)
+        """
+        # t is ignored - no time embedding used
         modules = self.all_modules
         m_idx = 0
 
-        if self.real_valued:
-            # x: [B, 1, F, T], y: [B, 1, F, T] -> [B, 2, F, T]
-            x = torch.cat([x, y], dim=1)
-        else:
-            # Convert real and imaginary parts of (x,y) into four channel dimensions
-            x = torch.cat((x.real, x.imag, y.real, y.imag), dim=1)
+        
+        # Convert real and imaginary parts of (x,y) into four channel dimensions
+        x = torch.cat((x.real, x.imag, y.real, y.imag), dim=1)
 
-        if self.embedding_type == 'fourier':
-            # Gaussian Fourier features embeddings.
-            used_sigmas = t
-            temb = modules[m_idx](torch.log(used_sigmas))
-            m_idx += 1
-
-        elif self.embedding_type == 'positional':
-            # Sinusoidal positional embeddings.
-            timesteps = t
-            used_sigmas = self.sigmas[t.long()]
-            temb = layers.get_timestep_embedding(timesteps, self.nf)
-
-        else:
-            raise ValueError(f'embedding type {self.embedding_type} unknown.')
-
-        temb = modules[m_idx](temb)
-        m_idx += 1
-        temb = modules[m_idx](self.act(temb))
-        m_idx += 1
+        # NO TIME EMBEDDING - temb is None
+        temb = None
 
         # Downsampling block
         input_pyramid = None
@@ -289,10 +254,10 @@ class NCSNpp_v2(nn.Module):
         for i_level in range(self.num_resolutions):
             # Residual blocks for this resolution
             for i_block in range(self.num_res_blocks):
-                h = modules[m_idx](hs[-1], temb)
+                h = modules[m_idx](hs[-1], temb)  # temb=None handled by ResnetBlock
                 m_idx += 1
                 # Attention layer (optional)
-                if h.shape[-2] in self.attn_resolutions: # edit: check H dim (-2) not W dim (-1)
+                if h.shape[-2] in self.attn_resolutions:
                     h = modules[m_idx](h)
                     m_idx += 1
                 hs.append(h)
@@ -306,7 +271,7 @@ class NCSNpp_v2(nn.Module):
                     h = modules[m_idx](hs[-1], temb)
                     m_idx += 1
 
-                if self.progressive_input == 'input_skip':   # Combine h with x
+                if self.progressive_input == 'input_skip':
                     input_pyramid = self.pyramid_downsample(input_pyramid)
                     h = modules[m_idx](input_pyramid, h)
                     m_idx += 1
@@ -321,12 +286,12 @@ class NCSNpp_v2(nn.Module):
                     h = input_pyramid
                 hs.append(h)
 
-        h = hs[-1] # actualy equal to: h = h
-        h = modules[m_idx](h, temb)  # ResNet block
+        h = hs[-1]
+        h = modules[m_idx](h, temb)
         m_idx += 1
-        h = modules[m_idx](h)  # Attention block
+        h = modules[m_idx](h)
         m_idx += 1
-        h = modules[m_idx](h, temb)  # ResNet block
+        h = modules[m_idx](h, temb)
         m_idx += 1
 
         pyramid = None
@@ -337,7 +302,6 @@ class NCSNpp_v2(nn.Module):
                 h = modules[m_idx](torch.cat([h, hs.pop()], dim=1), temb)
                 m_idx += 1
 
-            # edit: from -1 to -2
             if h.shape[-2] in self.attn_resolutions:
                 h = modules[m_idx](h)
                 m_idx += 1
@@ -345,9 +309,9 @@ class NCSNpp_v2(nn.Module):
             if self.progressive != 'none':
                 if i_level == self.num_resolutions - 1:
                     if self.progressive == 'output_skip':
-                        pyramid = self.act(modules[m_idx](h))  # GroupNorm
+                        pyramid = self.act(modules[m_idx](h))
                         m_idx += 1
-                        pyramid = modules[m_idx](pyramid)  # Conv2D: 256 -> 4
+                        pyramid = modules[m_idx](pyramid)
                         m_idx += 1
                     elif self.progressive == 'residual':
                         pyramid = self.act(modules[m_idx](h))
@@ -358,8 +322,8 @@ class NCSNpp_v2(nn.Module):
                         raise ValueError(f'{self.progressive} is not a valid name.')
                 else:
                     if self.progressive == 'output_skip':
-                        pyramid = self.pyramid_upsample(pyramid)  # Upsample
-                        pyramid_h = self.act(modules[m_idx](h))  # GroupNorm
+                        pyramid = self.pyramid_upsample(pyramid)
+                        pyramid_h = self.act(modules[m_idx](h))
                         m_idx += 1
                         pyramid_h = modules[m_idx](pyramid_h)
                         m_idx += 1
@@ -375,13 +339,12 @@ class NCSNpp_v2(nn.Module):
                     else:
                         raise ValueError(f'{self.progressive} is not a valid name')
 
-            # Upsampling Layer
             if i_level != 0:
                 if self.resblock_type == 'ddpm':
                     h = modules[m_idx](h)
                     m_idx += 1
                 else:
-                    h = modules[m_idx](h, temb)  # Upspampling
+                    h = modules[m_idx](h, temb)
                     m_idx += 1
 
         assert not hs
@@ -399,36 +362,64 @@ class NCSNpp_v2(nn.Module):
         h = self.output_layer(h)
         h = torch.permute(h, (0, 2, 3, 1)).contiguous()
 
-        if self.real_valued:
-            # [B, 1, F, T] output
-            return h.permute(0, 3, 1, 2)
-        else:
-            # Convert back to complex number
-            h = torch.view_as_complex(h)[:,None, :, :]
-            return h
+        # Convert back to complex number
+        h = torch.view_as_complex(h)[:,None, :, :]
+        return h
+
 
 if __name__ == "__main__":
-    model = NCSNpp_v2().eval()
-    
-    """complexity count"""
-    from ptflops import get_model_complexity_info
-    
-    def input_constructor(input_res):
-        # input_res is (F, T) 
-        F_bins, T_steps = input_res
-        x = torch.randn(1, 1, F_bins, T_steps, dtype=torch.cfloat)
-        y = torch.randn(1, 1, F_bins, T_steps, dtype=torch.cfloat)
-        t = torch.tensor([0.5])
-        return {"x": x, "y": y, "t": t}
-    
-    # Calculate MACs and parameters for 256x100
-    macs, params = get_model_complexity_info(
-        model, 
-        (256, 256), 
-        input_constructor=input_constructor, 
-        as_strings=False, 
-        print_per_layer_stat=False, 
-        verbose=False
-    )
-    macs *= (100/256)
-    print(f"The complexity of NCSNpp_v2: MACs (256x100)={macs/1e9:.2f} G, Params={params/1e6:.2f} M\n")
+    from thop import profile
+
+    configs = [
+        {"name": "CH64", "nf": 64, "ch_mult": (1, 1, 2, 2, 2, 2, 2), "num_res_blocks": 1, "attn_resolutions": (16,)},
+        {"name": "CH128", "nf": 128, "ch_mult": (1, 1, 2, 2, 2, 2, 2), "num_res_blocks": 2, "attn_resolutions": (16,)},
+    ]
+
+    for cfg in configs:
+        model = ncsnpp_v2_drift_input_condition(
+            nf=cfg["nf"],
+            ch_mult=cfg["ch_mult"],
+            num_res_blocks=cfg["num_res_blocks"],
+            attn_resolutions=cfg["attn_resolutions"]
+        ).eval()
+        
+        print("\n" + "-" * 50)
+        print(f">>> Model Complexity Profile: NCSN++ ({cfg['name']}) <<<")
+        
+        # Calculate Parameters
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        total_params_m = total_params / 1e6
+        trainable_params_m = trainable_params / 1e6
+
+        # Calculate MACs (256x128 for 1s audio at 16kHz, hop=128, n_fft=510)
+        x = torch.randn(1, 1, 256, 128, dtype=torch.cfloat)
+        y = torch.randn(1, 1, 256, 128, dtype=torch.cfloat)
+        
+        try:
+            macs, _ = profile(model, inputs=(x, y), verbose=False)
+            mac_string = f"{macs / 1e9:.2f} G MACs  ({macs:,})"
+        except Exception as e:
+            mac_string = f"N/A (Error: {e})"
+
+        print(f"Total Parameters:     {total_params_m:.2f} M  ({total_params:,} elements)")
+        print(f"Trainable Parameters: {trainable_params_m:.2f} M")
+        print(f"Total MACs (1s audio): {mac_string}")
+        print("-" * 50)
+    print("")
+
+# > python -m backbones.ncsnpp_v2_drift_input_condition
+# ^[[B^[[B^[[A^[[A
+# --------------------------------------------------
+# >>> Model Complexity Profile: NCSN++ (CH64) <<<
+# Total Parameters:     10.63 M  (10,630,054 elements)
+# Trainable Parameters: 10.63 M
+# Total MACs (1s audio): 23.33 G MACs  (23,327,088,640.0)
+# --------------------------------------------------
+
+# --------------------------------------------------
+# >>> Model Complexity Profile: NCSN++ (CH128) <<<
+# Total Parameters:     59.62 M  (59,615,014 elements)
+# Trainable Parameters: 59.62 M
+# Total MACs (1s audio): 132.88 G MACs  (132,880,678,912.0)
+# --------------------------------------------------

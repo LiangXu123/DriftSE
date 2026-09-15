@@ -1,0 +1,6 @@
+{
+    "__base__": ["default.json"],
+    "pesq_weight": 0.00001,
+    "sisdr_weight": 0.00001,
+    "ccmse_weight": 0.00001
+}

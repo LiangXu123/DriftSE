@@ -1,10 +1,5 @@
 # DriftSE: Speech Enhancement with Generative Drifting
 
-[![arXiv](https://img.shields.io/badge/%F0%9F%93%84%20arXiv-2609.12252-red.svg)](https://arxiv.org/abs/2609.12252)
-[![github](https://img.shields.io/badge/Code-GitHub-black?logo=github)](https://github.com/LiangXu123/DriftSE/tree/dual-latent-DriftSE)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
----
->
 > **DriftSE: Speech Enhancement with Generative Drifting** (Submitted to IEEE/ACM TASLP for possible publication. )
 >
 > *Liang Xu, Diego Caviedes-Nozal, W. Bastiaan Kleijn, Longfei Felix Yan, Rasmus Kongsgaard Olsson*
@@ -37,7 +32,7 @@ The [Hugging Face repository](https://huggingface.co/LIANGXU123/DriftSE/tree/dua
 LIANGXU123/DriftSE/
 ├── logs/                                              # Pre-trained DriftSE checkpoints
 │   ├── xxxx/
-│   │   └── last.ckpt                               
+│   │   └── last.ckpt                             
 ├── latent_ckpt/                                       # Frozen SSL speech encoders (for training/features)
 │   ├── distilhubert-local/                            # DistilHuBERT (768-d, 2 layers)
 │   ├── hubert-large-local/                            # HuBERT-Large (1024-d, 24 layers)
@@ -54,47 +49,30 @@ LIANGXU123/DriftSE/
 
 ### EARS-WHAM — Speech Denoising
 
-| Model | Causal | Latent | Params | GMACs | WER (↓) | PESQ (↑) | SI-SDR (↑) | ESTOI (↑) | DiMOS (↑) | WVMOS (↑) | NISQA (↑) | SCOREQ (↑) |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| *Noisy* | - | - | - | - | 32.80% | 1.24 | 5.4 | 0.64 | 2.58 | 1.20 | 1.95 | 2.13 |
-| **Non-Causal** | | | | | | | | | | | | |
-| SGMSE+ | ❌ | - | 65M | 132.89×60 | 18.65% | 2.20 | 14.2 | 0.84 | 3.93 | **2.86** | 3.66 | 3.48 |
-| ROSE-CD | ❌ | - | 59.62M | 132.88×1 | **18.19%** | **2.81** | 15.3 | 0.85 | 3.92 | 2.60 | 3.61 | **3.50** |
-| DM-IERM | ❌ | - | 67M | 129.7×31 | - | 2.67 | **17.4** | 0.74 | - | - | - | - |
-| FM-Euler4 | ❌ | - | 73.7M | 107.18×5 | 18.40% | 2.41 | 16.1 | **0.86** | **4.34** | 2.82 | **4.50** | - |
-| *DriftSE (NCSN++)* | ❌ | PANNs | 59.62M | 132.88×1 | 24.34% | 2.09 | 0.8 | 0.79 | 3.23 | 2.34 | 3.12 | 2.72 |
-| *DriftSE (NCSN++)* | ❌ | DistilHuBERT | 59.62M | 132.88×1 | 15.19% | 2.39 | 12.1 | 0.84 | 4.22 | 3.07 | **4.07** | 3.82 |
-| *DriftSE (NCSN++)* | ❌ | DistilHuBERT+PANNs | 59.62M | 132.88×1 | **14.33%** | 2.46 | **13.5** | **0.85** | 4.11 | **3.13** | 3.96 | **3.85** |
-| *DriftSE (NCSN++)* | ❌ | WavCube | 59.62M | 132.88×1 | 15.35% | 2.42 | 12.0 | 0.84 | **4.25** | 3.07 | 4.05 | **3.85** |
-| *DriftSE (TF-GridNet)* | ❌ | WavCube | 1.69M | 58.88×1 | 15.48% | **2.48** | 11.2 | 0.84 | 4.11 | 3.05 | 3.92 | **3.85** |
-| **Causal** | | | | | | | | | | | | |
-| SFM-LRK4 | ✔️ | - | 52.5M | 144.11×5 | 20.10% | 2.30 | 14.1 | 0.83 | 3.70 | 2.79 | 4.04 | - |
-| *DriftSE (SFMUnet)* | ✔️ | PANNs | 24.6M | 144.07×1 | 27.15% | 1.82 | -41.6 | 0.10 | 3.39 | 2.34 | 3.11 | 2.58 |
-| *DriftSE (SFMUnet)* | ✔️ | DistilHuBERT | 24.6M | 144.07×1 | 19.21% | 2.05 | **-31.5** | 0.51 | **4.08** | **3.05** | 3.70 | 3.33 |
-| *DriftSE (SFMUnet)* | ✔️ | DistilHuBERT+PANNs | 24.6M | 144.07×1 | 18.67% | 2.13 | -31.6 | 0.52 | 4.04 | 3.03 | 3.77 | 3.30 |
-| *DriftSE (SFMUnet)* | ✔️ | WavCube | 24.6M | 144.07×1 | 18.94% | 2.21 | -33.9 | 0.51 | 3.71 | 3.00 | 3.80 | 3.35 |
-| *DriftSE (TF-GridNet)* | ✔️ | WavCube | 1.24M | 41.43×1 | **18.11%** | **2.26** | -33.8 | **0.53** | 3.80 | 3.01 | **3.92** | **3.47** |
+| Model                    | Causal |       Latent       | Params |     WER (↓)     |   PESQ (↑)   |   SI-SDR (↑)   |   ESTOI (↑)   |  SCOREQ (↑)  |
+| ------------------------ | :----: | :----------------: | :----: | :--------------: | :------------: | :-------------: | :------------: | :------------: |
+| *Noisy*                |   -   |         -         |   -   |      32.80%      |      1.24      |       5.4       |      0.64      |      2.13      |
+| **Non-Causal**     |        |                    |        |                  |                |                |                |                |
+| SGMSE+                   |   ❌   |         -         |  65M  |      18.65%      |      2.20      |      14.2      |      0.84      |      3.48      |
+| ROSE-CD                  |   ❌   |         -         | 59.62M | **18.19%** | **2.81** |      15.3      |      0.85      | **3.50** |
+| DM-IERM                  |   ❌   |         -         |  67M  |        -        |      2.67      | **17.4** |      0.74      |       -       |
+| FM-Euler4                |   ❌   |         -         | 73.7M |      18.40%      |      2.41      |      16.1      | **0.86** |       -       |
+| *DriftSE (NCSN++)*     |   ❌   |       PANNs       | 59.62M |      24.34%      |      2.09      |       0.8       |      0.79      |      2.72      |
+| *DriftSE (NCSN++)*     |   ❌   |    DistilHuBERT    | 59.62M |      15.19%      |      2.39      |      12.1      |      0.84      |      3.82      |
+| *DriftSE (NCSN++)*     |   ❌   | DistilHuBERT+PANNs | 59.62M | **14.33%** |      2.46      | **13.5** | **0.85** | **3.85** |
+| *DriftSE (NCSN++)*     |   ❌   |      WavCube      | 59.62M |      15.35%      |      2.42      |      12.0      |      0.84      | **3.85** |
+| *DriftSE (TF-GridNet)* |   ❌   |      WavCube      | 1.69M |      15.48%      | **2.48** |      11.2      |      0.84      | **3.85** |
+| **Causal**         |        |                    |        |                  |                |                |                |                |
+| SFM-LRK4                 |  ✔️  |         -         | 52.5M |      20.10%      |      2.30      |      14.1      |      0.83      |       -       |
+| *DriftSE (SFMUnet)*    |  ✔️  |       PANNs       | 24.6M |      27.15%      |      1.82      |      -41.6      |      0.10      |      2.58      |
+| *DriftSE (SFMUnet)*    |  ✔️  |    DistilHuBERT    | 24.6M |      19.21%      |      2.05      | **-31.5** |      0.51      |      3.33      |
+| *DriftSE (SFMUnet)*    |  ✔️  | DistilHuBERT+PANNs | 24.6M |      18.67%      |      2.13      |      -31.6      |      0.52      |      3.30      |
+| *DriftSE (SFMUnet)*    |  ✔️  |      WavCube      | 24.6M |      18.94%      |      2.21      |      -33.9      |      0.51      |      3.35      |
+| *DriftSE (TF-GridNet)* |  ✔️  |      WavCube      | 1.24M | **18.11%** | **2.26** |      -33.8      | **0.53** | **3.47** |
 
 ### EARS-REVERB — Speech Dereverberation
 
-| Model | Causal | Latent | Params | GMACs | WER (↓) | PESQ (↑) | SI-SDR (↑) | ESTOI (↑) | DiMOS (↑) | WVMOS (↑) | NISQA (↑) | SCOREQ (↑) |
-| --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| *Reverberant* | - | - | - | - | 20.10% | 1.32 | -16.6 | 0.58 | 3.02 | 2.02 | 2.11 | 3.12 |
-| **Non-Causal** | | | | | | | | | | | | |
-| SGMSE+ | ❌ | - | 65.59M | 132.89×60 | 17.32% | 1.95 | -12.6 | 0.76 | 3.48 | 2.16 | **3.58** | **2.69** |
-| ROSE-CD | ❌ | - | 59.62M | 132.88×1 | 15.78% | 2.69 | -13.9 | 0.82 | 3.75 | **2.70** | 3.14 | 2.66 |
-| DM-IERM | ❌ | - | 67M | 129.7×31 | - | **3.52** | **14.2** | **0.92** | - | - | - | - |
-| FM-Euler5 | ❌ | - | 38.7M | 107.18×5 | **11.40%** | 2.31 | -11.7 | 0.85 | **3.77** | 2.43 | 3.47 | - |
-| *DriftSE (NCSN++)* | ❌ | WavLM+PANNs | 59.62M | 132.88×1 | **8.91%** | 2.35 | -9.3 | 0.83 | **4.13** | **3.04** | 3.89 | **3.61** |
-| *DriftSE (NCSN++)* | ❌ | WavCube | 59.62M | 132.88×1 | 10.28% | 2.33 | -10.5 | 0.82 | 4.04 | 2.72 | **4.11** | 3.30 |
-| *DriftSE (TF-GridNet)* | ❌ | WavLM+PANNs | 1.69M | 58.88×1 | 15.59% | 2.07 | -8.2 | 0.78 | 3.52 | 2.45 | 3.04 | 3.34 |
-| *DriftSE (TF-GridNet)* | ❌ | WavCube | 1.69M | 58.88×1 | 9.93% | **2.43** | **-6.8** | **0.84** | 3.92 | 2.69 | 3.92 | 3.17 |
-| **Causal** | | | | | | | | | | | | |
-| SFM-LRK5 | ✔️ | - | 27.9M | 144.11×5 | 15.90% | 2.05 | -13.5 | 0.79 | 3.68 | 2.48 | 3.67 | - |
-| *DriftSE (SFMUnet)* | ✔️ | WavLM+PANNs | 24.6M | 144.07×1 | 10.97% | 2.11 | **-33.3** | **0.58** | 3.93 | 2.84 | 3.56 | 3.28 |
-| *DriftSE (SFMUnet)* | ✔️ | WavCube | 24.6M | 144.07×1 | 11.17% | 2.32 | -34.3 | 0.54 | 4.09 | 2.79 | 4.03 | 3.30 |
-| *DriftSE (TF-GridNet)* | ✔️ | WavLM+PANNs | 1.24M | 41.43×1 | 9.00% | 2.33 | -33.8 | 0.56 | 3.93 | 2.80 | 3.48 | 3.33 |
-| *DriftSE (TF-GridNet)* | ✔️ | WavCube | 1.24M | 41.43×1 | **8.85%** | **2.71** | -34.5 | 0.56 | **4.16** | **2.96** | **4.07** | **3.58** |
+ModelCausalLatentParamsWER (↓)PESQ (↑)SI-SDR (↑)ESTOI (↑)SCOREQ (↑)*Reverberant*---20.10%1.32-16.60.583.12**Non-Causal**        SGMSE+❌-65.59M17.32%1.95-12.60.76**2.69**ROSE-CD❌-59.62M15.78%2.69-13.90.822.66DM-IERM❌-67M-**3.52****14.2****0.92**-FM-Euler5❌-38.7M**11.40%**2.31-11.70.85-*DriftSE (NCSN++)*❌WavLM+PANNs59.62M**8.91%**2.35-9.30.83**3.61***DriftSE (NCSN++)*❌WavCube59.62M10.28%2.33-10.50.823.30*DriftSE (TF-GridNet)*❌WavLM+PANNs1.69M15.59%2.07-8.20.783.34*DriftSE (TF-GridNet)*❌WavCube1.69M9.93%**2.43****-6.8****0.84**3.17**Causal**        SFM-LRK5✔️-27.9M15.90%2.05-13.50.79-*DriftSE (SFMUnet)*✔️WavLM+PANNs24.6M10.97%2.11**-33.3****0.58**3.28*DriftSE (SFMUnet)*✔️WavCube24.6M11.17%2.32-34.30.543.30*DriftSE (TF-GridNet)*✔️WavLM+PANNs1.24M9.00%2.33-33.80.563.33*DriftSE (TF-GridNet)*✔️WavCube1.24M**8.85%****2.71**-34.50.56**3.58**
 
 ---
 
@@ -154,6 +132,7 @@ bash ./train.sh <GPU_ID> [CONFIG_PATH]
 # Example: specific config
 bash ./train.sh 0 ./config/DriftSE/experiments/SE_EARS_distilhubert_ch1282_incond_PANNs.json
 ```
+
 ---
 
 ## 🤗 SSL & Latent Encoder Checkpoints

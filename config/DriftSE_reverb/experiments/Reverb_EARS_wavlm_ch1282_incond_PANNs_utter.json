@@ -1,0 +1,15 @@
+{
+    "task": "reverb_ears",
+    "__base__": [
+        "../../base/backbone/ncsnpp_ch128.json",
+        "../../base/latent/wavlm.json",
+        "../../base/latent_aux/panns.json",
+        "../../base/training/default.json"
+    ],
+    "test_dir": "/vol/liangxu-solar/data/EARS-Reverb_v2_16k/test/reverberant",
+    "output_dir": "./logs/Reverb_EARS_wavlm_ch1282_incond_PANNs_utter",
+    "enhanced_dir": "./out/Reverb_EARS_wavlm_ch1282_incond_PANNs_utter",
+    "ckpt": "./logs/Reverb_EARS_wavlm_ch1282_incond_PANNs_utter/last.ckpt",
+    "batch_size": 8,
+    "accumulate_grad_batches": 4
+}

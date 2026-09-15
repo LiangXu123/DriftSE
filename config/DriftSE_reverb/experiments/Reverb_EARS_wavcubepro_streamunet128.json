@@ -1,0 +1,14 @@
+{
+    "task": "reverb_ears",
+    "__base__": [
+        "../../base/backbone/streamunet128.json",
+        "../../base/latent/wavcubepro.json",
+        "../../base/training/default.json"
+    ],
+    "test_dir": "/vol/liangxu-solar/data/EARS-Reverb_v2_16k/test/reverberant",
+    "output_dir": "./logs/Reverb_EARS_wavcubepro_streamunet128",
+    "enhanced_dir": "./out/Reverb_EARS_wavcubepro_streamunet128",
+    "ckpt": "./logs/Reverb_EARS_wavcubepro_streamunet128/last.ckpt",
+    "batch_size": 8,
+    "accumulate_grad_batches": 4
+}

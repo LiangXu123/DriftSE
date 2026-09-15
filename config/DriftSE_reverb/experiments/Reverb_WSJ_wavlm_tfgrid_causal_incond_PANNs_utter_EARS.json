@@ -1,0 +1,15 @@
+{
+    "task": "reverb_ears",
+    "__base__": [
+        "../../base/backbone/tfgridnet_causal.json",
+        "../../base/latent/wavlm.json",
+        "../../base/latent_aux/panns.json",
+        "../../base/training/default.json"
+    ],
+    "test_dir": "/vol/liangxu-solar/data/EARS-Reverb_v2_16k/test/reverberant",
+    "output_dir": "./logs/Reverb_WSJ_wavlm_tfgrid_causal_incond_PANNs_utter_EARS",
+    "enhanced_dir": "./out/Reverb_WSJ_wavlm_tfgrid_causal_incond_PANNs_utter_EARS",
+    "ckpt": "./logs/Reverb_WSJ_wavlm_tfgrid_causal_incond_PANNs_utter_EARS/last.ckpt",
+    "batch_size": 8,
+    "accumulate_grad_batches": 4
+}

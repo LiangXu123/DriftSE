@@ -1,0 +1,22 @@
+{
+    "latent_model_type": "panns",
+    "latent_drift_weight": 1.0,
+    "latent_temperatures": [
+        0.005,
+        0.01
+    ],
+    "scales": [
+        {
+            "name": "block5",
+            "layer": 5,
+            "weight": 1.0,
+            "gate_steps": 0
+        },
+        {
+            "name": "block6",
+            "layer": 6,
+            "weight": 1.0,
+            "gate_steps": 0
+        }
+    ]
+}

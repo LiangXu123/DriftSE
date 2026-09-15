@@ -14,14 +14,11 @@ echo "Using GPU ID: $GPU_ID"
 export CUDA_VISIBLE_DEVICES=$GPU_ID
 echo "CUDA_VISIBLE_DEVICES set to: $CUDA_VISIBLE_DEVICES"
 
-# --- Load path configuration (data dirs + encoder checkpoints) ---
-source "$(dirname "$0")/path_config.sh"
-
 export WANDB_MODE=dryrun
 echo "W&B mode set to: dryrun"
 
 # Optional config argument
-CONFIG_PATH=${2:-"./config/with_z/v2_drift2_distillhubert_three_layers.json"}
+CONFIG_PATH=${2:-"./config/DriftSE/experiments/SE_EARS_distilhubert_ch1282_incond_PANNs.json"}
 echo "Using config: $CONFIG_PATH"
 
 python train.py \

@@ -272,3 +272,49 @@ class ResnetBlockBigGANpp(nn.Module):
       return x + h
     else:
       return (x + h) / np.sqrt(2.)
+
+
+class CausalAttnBlock(nn.Module):
+    """Channel-wise causal self-attention block. Causal in the time (last) dimension.
+    Uses CumulativeGroupNorm from local causal_utils for temporal causality."""
+
+    def __init__(self, channels, skip_rescale=False, init_scale=0.):
+        super().__init__()
+        from .causal_utils import CumulativeGroupNorm
+        self.GroupNorm_0 = CumulativeGroupNorm(
+            num_groups=min(channels // 4, 32), num_channels=channels, eps=1e-6)
+        self.NIN_0 = NIN(channels, channels)   # query
+        self.NIN_1 = NIN(channels, channels)   # key
+        self.NIN_2 = NIN(channels, channels)   # value
+        self.NIN_3 = NIN(channels, channels, init_scale=init_scale)
+        self.skip_rescale = skip_rescale
+
+    def forward(self, x):
+        B, C, H, T = x.shape  # T is time dimension
+        h = self.GroupNorm_0(x)
+        q = self.NIN_0(h)  # (B, C, H, T)
+        k = self.NIN_1(h)  # (B, C, H, T)
+        v = self.NIN_2(h)  # (B, C, H, T)
+
+        # Reshape for attention: treat each (batch, freq) as independent sequences
+        q = q.permute(0, 2, 3, 1).contiguous()  # (B, H, T, C)
+        k = k.permute(0, 2, 1, 3).contiguous()  # (B, H, C, T)
+        v = v.permute(0, 2, 3, 1).contiguous()  # (B, H, T, C)
+
+        # Attention weights: (B, H, T, T)
+        w = torch.matmul(q, k) * (int(C) ** (-0.5))
+
+        # Causal mask: each time step only attends to current and past
+        causal_mask = torch.triu(
+            torch.ones(T, T, device=x.device, dtype=x.dtype) * float('-inf'), diagonal=1)
+        w = w + causal_mask
+
+        w = F.softmax(w, dim=-1)
+        h = torch.matmul(w, v)        # (B, H, T, C)
+        h = h.permute(0, 3, 1, 2).contiguous()  # (B, C, H, T)
+        h = self.NIN_3(h)
+
+        if not self.skip_rescale:
+            return x + h
+        else:
+            return (x + h) / np.sqrt(2.)

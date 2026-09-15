@@ -1,0 +1,10 @@
+{
+    "latent_model_type": "wavlm",
+    "latent_drift_weight": 1.0,
+    "latent_temperatures": [0.005, 0.01],
+    "scales": [
+        {"name": "early",    "layer": 6,  "weight": 1.0, "gate_steps": 0},
+        {"name": "mid",      "layer": 12, "weight": 1.0, "gate_steps": 0},
+        {"name": "semantic", "layer": 24, "weight": 1.0, "gate_steps": 0}
+    ]
+}

@@ -1,0 +1,14 @@
+{
+    "task": "se_ears_wham",
+    "__base__": [
+        "../../base/backbone/streamunet128.json",
+        "../../base/latent/wavcubepro.json",
+        "../../base/training/default.json"
+    ],
+    "test_dir": "/vol/liangxu-solar/data/EARS-WHAM_v2_16k/test/noisy",
+    "output_dir": "./logs/SE_EARS_wavcubepro_streamunet128_causal_incond",
+    "enhanced_dir": "./out/SE_EARS_wavcubepro_streamunet128_causal_incond",
+    "ckpt": "./logs/SE_EARS_wavcubepro_streamunet128_causal_incond/last.ckpt",
+    "batch_size": 8,
+    "accumulate_grad_batches": 4
+}

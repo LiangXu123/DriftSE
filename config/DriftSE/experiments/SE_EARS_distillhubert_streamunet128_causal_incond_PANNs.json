@@ -1,0 +1,15 @@
+{
+    "task": "se_ears_wham",
+    "__base__": [
+        "../../base/backbone/streamunet128.json",
+        "../../base/latent/distillhubert.json",
+        "../../base/latent_aux/panns.json",
+        "../../base/training/default.json"
+    ],
+    "test_dir": "/vol/liangxu-solar/data/EARS-WHAM_v2_16k/test/noisy",
+    "output_dir": "./logs/SE_EARS_distilhubert_streamunet128_causal_incond_PANNs",
+    "enhanced_dir": "./out/SE_EARS_distilhubert_streamunet128_causal_incond_PANNs",
+    "ckpt": "./logs/SE_EARS_distilhubert_streamunet128_causal_incond_PANNs/epoch10.ckpt",
+    "batch_size": 8,
+    "accumulate_grad_batches": 4
+}

@@ -1,0 +1,15 @@
+{
+    "model": "tfgridnet_causal",
+    "n_layers": 4,
+    "emb_dim": 32,
+    "lstm_hidden_units": 100,
+    "attn_n_head": 4,
+    "causal": true,
+    "image_size": 256,
+    "n_fft": 510,
+    "hop_length": 256,
+    "window_type": "hann",
+    "center": true,
+    "spec_factor": 0.15,
+    "spec_abs_exponent": 0.5
+}

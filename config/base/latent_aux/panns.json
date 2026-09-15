@@ -1,0 +1,28 @@
+{
+    "aux_encoder": {
+        "type": "panns",
+        "ckpt_dir": "/vol/liangxu-solar/exp_code/latent_ckpt/panns-local/",
+        "ckpt_file": "Cnn14_mAP=0.431.pth",
+        "sample_rate": 32000,
+        "drift_mode": "frame",
+        "latent_temperatures": [
+            0.005,
+            0.01
+        ],
+        "latent_drift_weight": 1.0,
+        "scales": [
+            {
+                "name": "block5",
+                "layer": 5,
+                "weight": 1.0,
+                "gate_steps": 0
+            },
+            {
+                "name": "block6",
+                "layer": 6,
+                "weight": 1.0,
+                "gate_steps": 0
+            }
+        ]
+    }
+}

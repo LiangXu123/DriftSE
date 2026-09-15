@@ -1,0 +1,28 @@
+{
+    "aux_encoder": {
+        "type": "beats",
+        "ckpt_dir": "/vol/liangxu-solar/exp_code/latent_ckpt/beats-local/",
+        "ckpt_file": "BEATs_iter3_plus_AS2M.pt",
+        "sample_rate": 16000,
+        "drift_mode": "frame",
+        "latent_temperatures": [
+            0.005,
+            0.01
+        ],
+        "latent_drift_weight": 1.0,
+        "scales": [
+            {
+                "name": "mid",
+                "layer": 6,
+                "weight": 1.0,
+                "gate_steps": 0
+            },
+            {
+                "name": "deep",
+                "layer": 12,
+                "weight": 1.0,
+                "gate_steps": 0
+            }
+        ]
+    }
+}

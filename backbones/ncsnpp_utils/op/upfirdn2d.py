@@ -8,8 +8,21 @@ from torch.utils.cpp_extension import load
 
 module_path = os.path.dirname(__file__)
 
-# Force PyTorch fallback to avoid CUDA_HOME dependency
-upfirdn2d_op = None
+if torch.cuda.is_available():
+    try:
+        cap = torch.cuda.get_device_capability()
+        arch_tag = f"sm{cap[0]}{cap[1]}"
+    except Exception:
+        arch_tag = "cuda"
+    upfirdn2d_op = load(
+        f"upfirdn2d_{arch_tag}",
+        sources=[
+            os.path.join(module_path, "upfirdn2d.cpp"),
+            os.path.join(module_path, "upfirdn2d_kernel.cu"),
+        ],
+    )
+else:
+    upfirdn2d_op = None
 
 class UpFirDn2dBackward(Function):
     @staticmethod
@@ -138,16 +151,53 @@ class UpFirDn2d(Function):
 
 
 def upfirdn2d(input, kernel, up=1, down=1, pad=(0, 0)):
-    if input.device.type == "cpu" or upfirdn2d_op is None:
+    if input.device.type == "cpu":
         out = upfirdn2d_native(
             input, kernel, up, up, down, down, pad[0], pad[1], pad[0], pad[1]
         )
+
     else:
         out = UpFirDn2d.apply(
             input, kernel, (up, up), (down, down), (pad[0], pad[1], pad[0], pad[1])
         )
 
     return out
+
+def upfirdn2d_freq(input, kernel, up=1, down=1, pad=(0, 0)):
+    """
+    Apply up/downsampling and FIR filtering only on the frequency axis (third dim).
+    Args:
+        input:  [N, C, Freq, Time]
+        kernel: 1D or 2D tensor (should be vertical: [kH, 1])
+        up:     Upsampling factor for frequency axis
+        down:   Downsampling factor for frequency axis
+        pad:    (pad_top, pad_bottom) for frequency axis
+    Returns:
+        Output tensor with only the frequency axis changed.
+    """
+    # Ensure kernel is 2D: [kH, 1]
+    if kernel.ndim == 1:
+        kernel = kernel.view(-1, 1)
+    elif kernel.shape[1] != 1:
+        raise ValueError("kernel must be 1D or 2D with shape [kH, 1] for freq filtering.")
+
+    # upfirdn2d expects up, down, pad for both axes
+    # We want to up/downsample only frequency (H), so set time (W) factors to 1 and pads to 0
+    if input.device.type == "cpu":
+        out = upfirdn2d_native(
+            input, kernel, 1, up, 1, down, 0, 0, pad[0], pad[1]
+        )
+
+    else:
+        out = UpFirDn2d.apply(
+            input, kernel, (1, up), (1, down), (0, 0, pad[0], pad[1])
+        )
+
+    # out = upfirdn2d_native(
+    #     input, kernel, 1, up, 1, down, 0, 0, pad[0], pad[1]
+    # )
+    return out
+
 
 
 def upfirdn2d_native(
@@ -190,5 +240,4 @@ def upfirdn2d_native(
 
     out_h = (in_h * up_y + pad_y0 + pad_y1 - kernel_h) // down_y + 1
     out_w = (in_w * up_x + pad_x0 + pad_x1 - kernel_w) // down_x + 1
-
     return out.view(-1, channel, out_h, out_w)
