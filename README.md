@@ -20,7 +20,8 @@
 > **DriftSE: Speech Enhancement with Generative Drifting** (Submitted to IEEE/ACM TASLP for possible publication. )
 >
 > *Liang Xu, Diego Caviedes-Nozal, W. Bastiaan Kleijn, Longfei Felix Yan, Rasmus Kongsgaard Olsson*
-
+🔗 [**Project Website**](https://liangxu123.github.io/driftse/) &nbsp;|&nbsp; 📄 [**arXiv Paper**](https://arxiv.org/abs/2609.12252) &nbsp;|&nbsp
+> 
 ## ✨ Key Highlights
 
 - **Novel Generative Paradigm** — Formulates speech enhancement as a distributional equilibrium problem, eliminating the need for iterative denoising or trajectory-based sampling.
