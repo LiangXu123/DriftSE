@@ -1,6 +1,6 @@
 # DriftSE: Speech Enhancement with Generative Drifting
 
-> **DriftSE: Speech Enhancement with Generative Drifting** (Submitted to IEEE/ACM TASLP for possible publication.)
+> **DriftSE: Speech Enhancement with Generative Drifting** (Submitted to IEEE/ACM TASLP.)
 >
 > *Liang Xu, Diego Caviedes-Nozal, W. Bastiaan Kleijn, Longfei Felix Yan, Rasmus Kongsgaard Olsson*
 
