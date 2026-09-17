@@ -1,12 +1,12 @@
 # DriftSE: Speech Enhancement with Generative Drifting
 [![arXiv](https://img.shields.io/badge/%F0%9F%93%84%20arXiv-2609.12252-red.svg)](https://arxiv.org/abs/2609.12252)
-[![github](https://img.shields.io/badge/Code-GitHub-black?logo=github)]([https://github.com/liangxu123/driftse](https://github.com/LiangXu123/DriftSE/tree/dual-latent-DriftSE))
+[![github](https://img.shields.io/badge/Code-GitHub-black?logo=github)]([[https://github.com/liangxu123/driftse](https://github.com/LiangXu123/DriftSE/tree/dual-latent-DriftSE)](https://github.com/LiangXu123/DriftSE/tree/dual-latent-DriftSE))
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 > **DriftSE: Speech Enhancement with Generative Drifting** (Submitted to IEEE/ACM TASLP.)
 >
 > *Liang Xu, Diego Caviedes-Nozal, W. Bastiaan Kleijn, Longfei Felix Yan, Rasmus Kongsgaard Olsson*
 
-🔗 [**Project Website**](https://liangxu123.github.io/) &nbsp;|&nbsp; 📄 [**arXiv Paper**](https://arxiv.org/abs/2609.12252) &nbsp;|&nbsp; 🤗 [**Hugging Face Space**](https://huggingface.co/spaces/LIANGXU123/DriftSE)
+🔗 [**Project Website**]([https://liangxu123.github.io/](https://liangxu123.github.io/driftse/)) &nbsp;|&nbsp; 📄 [**arXiv Paper**](https://arxiv.org/abs/2609.12252) &nbsp;|&nbsp; 🤗 [**Hugging Face Space**](https://huggingface.co/spaces/LIANGXU123/DriftSE)
 
 ---
 
