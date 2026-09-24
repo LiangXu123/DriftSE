@@ -9,7 +9,7 @@
     "output_dir": "./logs/SE_EARS_wavcubepro_streamunet128_causal_incond",
     "enhanced_dir": "./out/SE_EARS_wavcubepro_streamunet128_causal_incond",
     "ckpt": "./logs/SE_EARS_wavcubepro_streamunet128_causal_incond/last.ckpt",
-    "batch_size": 8,
+    "batch_size": 6,
     "accumulate_grad_batches": 4,
     "SOAP": false,
     "epochs": 100
