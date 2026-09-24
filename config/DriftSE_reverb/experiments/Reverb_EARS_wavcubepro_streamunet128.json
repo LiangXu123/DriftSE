@@ -10,5 +10,7 @@
     "enhanced_dir": "./out/Reverb_EARS_wavcubepro_streamunet128",
     "ckpt": "./logs/Reverb_EARS_wavcubepro_streamunet128/last.ckpt",
     "batch_size": 8,
-    "accumulate_grad_batches": 4
+    "accumulate_grad_batches": 4,
+    "SOAP": false,
+    "epochs": 100
 }
