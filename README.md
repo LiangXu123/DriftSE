@@ -214,9 +214,9 @@ If you find DriftSE useful in your research, please cite:
 @article{xu2026driftse,
   author  = {Xu, Liang and Caviedes-Nozal, Diego and Kleijn, W. Bastiaan and Yan, Longfei Felix and Olsson, Rasmus Kongsgaard},
   title   = {{DriftSE: Speech Enhancement with Generative Drifting}},
-  journal = {IEEE/ACM Transactions on Audio, Speech, and Language Processing},
+  journal = {arXiv preprint arXiv:2609.12252},
   year    = {2026},
-  note    = {Submitted},
+  doi     = {10.48550/arXiv.2609.12252}
 }
 ```
 
